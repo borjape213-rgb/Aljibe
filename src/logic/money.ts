@@ -1,0 +1,64 @@
+const MINUS = '−';
+
+/** Formatea céntimos con la moneda dada. `signed` pone − o + explícito. */
+export function formatCents(
+  cents: number,
+  currency: string,
+  opts: { signed?: boolean; locale?: string } = {},
+): string {
+  const nf = new Intl.NumberFormat(opts.locale, { style: 'currency', currency });
+  const body = nf.format(Math.abs(cents) / 100);
+  if (!opts.signed) return cents < 0 ? `${MINUS}${body}` : body;
+  if (cents === 0) return body;
+  return `${cents < 0 ? MINUS : '+'}${body}`;
+}
+
+/** Frase para lectores de pantalla: "menos 45,20 €". */
+export function spokenCents(cents: number, currency: string, locale?: string): string {
+  const body = formatCents(Math.abs(cents), currency, { locale });
+  if (cents === 0) return body;
+  return `${cents < 0 ? 'menos' : 'más'} ${body}`;
+}
+
+/**
+ * Convierte texto escrito por una persona en céntimos enteros, o null si no es válido.
+ * Con los dos separadores, el último es el decimal ("1.234,56" y "1,234.56").
+ * Con uno solo: si se repite o va seguido de exactamente 3 cifras es de miles; si va
+ * seguido de 1 o 2 cifras es decimal; en otro caso no es válido.
+ */
+export function parseCents(input: string): number | null {
+  let s = input.trim().replace(/\s/g, '').replace(/−/g, '-');
+  if (s === '') return null;
+  let sign = 1;
+  if (s.startsWith('-')) { sign = -1; s = s.slice(1); }
+  else if (s.startsWith('+')) { s = s.slice(1); }
+  if (!/^[0-9.,]+$/.test(s) || !/[0-9]/.test(s)) return null;
+
+  const lastDot = s.lastIndexOf('.');
+  const lastComma = s.lastIndexOf(',');
+  let intPart = s;
+  let frac = '';
+  if (lastDot >= 0 && lastComma >= 0) {
+    const dec = Math.max(lastDot, lastComma);
+    intPart = s.slice(0, dec).replace(/[.,]/g, '');
+    frac = s.slice(dec + 1);
+  } else if (lastDot >= 0 || lastComma >= 0) {
+    const sep = lastDot >= 0 ? '.' : ',';
+    const parts = s.split(sep);
+    const after = parts[parts.length - 1];
+    if (parts.length > 2 || after.length === 3) {
+      if (parts.slice(1).some((p) => p.length !== 3)) return null;
+      intPart = parts.join('');
+    } else if (after.length === 1 || after.length === 2) {
+      intPart = parts.slice(0, -1).join('');
+      frac = after;
+    } else {
+      return null;
+    }
+  }
+  if (!/^[0-9]*$/.test(intPart) || !/^[0-9]{0,2}$/.test(frac)) return null;
+  if (intPart === '' && frac === '') return null;
+  const cents = Number(intPart || '0') * 100 + Number(frac.padEnd(2, '0') || '0');
+  if (!Number.isSafeInteger(cents)) return null;
+  return sign * cents;
+}
