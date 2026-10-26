@@ -27,7 +27,7 @@ export function Transactions({ route }: { route: Route }) {
   const { kindOf } = catIndex(s);
   const items = useMemo(() => {
     const ql = q.trim().toLowerCase();
-    return s.transactions.filter((t) => (!ql || t.merchant.toLowerCase().includes(ql) || t.notes.toLowerCase().includes(ql)) && (!acc || t.accountId === acc) && (!cat || t.categoryId === cat || t.splits.some((p) => p.categoryId === cat)) && (!status || (status === 'review' ? t.needsReview : status === 'pending' ? t.pending : status === 'hidden' ? t.hidden : true)));
+    return s.transactions.filter((t) => (!ql || t.merchant.toLowerCase().includes(ql) || t.notes.toLowerCase().includes(ql)) && (!acc || t.accountId === acc) && (!cat || t.categoryId === cat || t.splits.some((p) => p.categoryId === cat)) && (!status || (status === 'review' ? t.needsReview : status === 'hidden' ? t.hidden : true)));
   }, [s.transactions, q, acc, cat, status]);
   const active = [acc, cat, status].filter(Boolean).length;
   void kindOf;
@@ -59,7 +59,7 @@ export function Transactions({ route }: { route: Route }) {
           <div className="form">
             <Field id="fa" label="Cuenta">{(p) => <select {...p} className="input" value={acc} onChange={(e) => setQuery('acc', e.target.value)}><option value="">Todas</option>{s.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</Field>
             <Field id="fc" label="Categoría">{(p) => <select {...p} className="input" value={cat} onChange={(e) => setQuery('cat', e.target.value)}><option value="">Todas</option>{s.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}</Field>
-            <div className="field"><span className="lbl">Estado</span><div className="chips wrap">{[['', 'Todos'], ['review', 'Por revisar'], ['pending', 'Pendientes'], ['hidden', 'Ocultas']].map(([v, l]) => <Chip key={v} selected={status === v} onClick={() => setQuery('st', v)}>{l}</Chip>)}</div></div>
+            <div className="field"><span className="lbl">Estado</span><div className="chips wrap">{[['', 'Todos'], ['review', 'Por revisar'], ['hidden', 'Ocultas']].map(([v, l]) => <Chip key={v} selected={status === v} onClick={() => setQuery('st', v)}>{l}</Chip>)}</div></div>
             <div className="btnrow"><Button variant="secondary" onClick={() => { location.hash = '#/transactions'; setFilters(false); }}>Quitar filtros</Button><Button onClick={() => setFilters(false)}>Ver resultados</Button></div>
           </div>
         </Sheet>
@@ -135,7 +135,6 @@ export function TransactionDetail({ id }: { id: string }) {
         <section className="card pad" aria-label="Resumen">
           <div className="xl b6"><Amount cents={t.amountCents} signed /></div>
           <div className="muted sm">{formatDay(t.date)} · {names.acc(t.accountId)}</div>
-          {t.pending ? <p className="sm warn" style={{ margin: '8px 0 0' }}>Pendiente: el banco aún no la ha confirmado.</p> : null}
           {t.splits.length ? <p className="sm" style={{ margin: '8px 0 0' }}>Dividida en {t.splits.length} partes.</p> : null}
         </section>
         <section className="card pad form" aria-label="Detalles">

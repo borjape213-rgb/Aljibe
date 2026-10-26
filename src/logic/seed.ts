@@ -52,7 +52,7 @@ export function buildSeed(now = new Date()): State {
   let n = 0;
   const add = (accountId: string, date: string, cents: number, merchant: string, categoryId: string, extra: Partial<Transaction> = {}) => {
     if (date > today) return;
-    txs.push({ id: `t${++n}`, accountId, date, amountCents: Math.round(cents), merchant, categoryId, notes: '', tags: [], pending: false, hidden: false, needsReview: false, splits: [], ...extra });
+    txs.push({ id: `t${++n}`, accountId, date, amountCents: Math.round(cents), merchant, categoryId, notes: '', tags: [], hidden: false, needsReview: false, splits: [], ...extra });
   };
 
   const thisMonth = monthStart(today);
@@ -83,12 +83,11 @@ export function buildSeed(now = new Date()): State {
     add('a-check', day(5), -Math.round(between(30000, 40000)), 'Pago de tarjeta', 'c-transfer');
   }
   txs.sort((a, b) => (a.date === b.date ? a.id.localeCompare(b.id) : a.date < b.date ? 1 : -1));
-  // los últimos 3 días: pendientes y por revisar; uno sin categoría
-  txs.slice(0, 4).forEach((t) => (t.pending = true));
+  // los últimos días: por revisar; uno sin categoría
   txs.slice(0, 9).forEach((t) => (t.needsReview = true));
   if (txs[2]) { txs[2].categoryId = 'c-none'; txs[2].notes = 'No recuerdo qué era'; }
   // una compra dividida de ejemplo
-  const big = txs.find((t) => t.categoryId === 'c-groceries' && t.amountCents < -6000 && !t.pending);
+  const big = txs.find((t) => t.categoryId === 'c-groceries' && t.amountCents < -6000);
   if (big) {
     const a = Math.round(big.amountCents * 0.7);
     big.splits = [{ categoryId: 'c-groceries', amountCents: a }, { categoryId: 'c-pharmacy', amountCents: big.amountCents - a, note: 'Productos de farmacia' }];

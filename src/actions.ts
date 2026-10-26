@@ -13,7 +13,7 @@ export async function createTransaction(input: { accountId: Id; date: string; am
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new ValidationError('La fecha no es válida.');
   const s = getState();
   const ruled = applyRules(s.rules, { merchant: input.merchant.trim(), categoryId: input.categoryId });
-  const t: Transaction = { id: uid('t'), accountId: input.accountId, date: input.date, amountCents: input.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId, notes: input.notes ?? '', tags: [], pending: false, hidden: false, needsReview: false, splits: [] };
+  const t: Transaction = { id: uid('t'), accountId: input.accountId, date: input.date, amountCents: input.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId, notes: input.notes ?? '', tags: [], hidden: false, needsReview: false, splits: [] };
   const acc = s.accounts.find((a) => a.id === input.accountId);
   mutate((st) => ({ ...st, transactions: [t, ...st.transactions].sort(byDateDesc), accounts: st.accounts.map((a) => (a.id === input.accountId && a.group !== 'investments' ? { ...a, balanceCents: a.balanceCents + t.amountCents } : a)) }));
   void acc;
@@ -96,7 +96,7 @@ export async function importRows(accountId: Id, rows: ImportRow[]): Promise<{ ad
   const { fresh, skipped } = planImport(s, accountId, rows);
   const news: Transaction[] = fresh.map(({ row, key }) => {
     const r = applyRules(s.rules, { merchant: row.merchant, categoryId: 'c-none' });
-    return { id: uid('t'), accountId, date: row.date, amountCents: row.amountCents, merchant: r.merchant, categoryId: r.categoryId, notes: '', tags: [], pending: false, hidden: false, needsReview: true, splits: [], externalId: key };
+    return { id: uid('t'), accountId, date: row.date, amountCents: row.amountCents, merchant: r.merchant, categoryId: r.categoryId, notes: '', tags: [], hidden: false, needsReview: true, splits: [], externalId: key };
   });
   const delta = news.reduce((n, t) => n + t.amountCents, 0);
   mutate((st) => ({ ...st, transactions: [...news, ...st.transactions].sort(byDateDesc), accounts: st.accounts.map((a) => (a.id === accountId && a.group !== 'investments' ? { ...a, balanceCents: a.balanceCents + delta } : a)) }));

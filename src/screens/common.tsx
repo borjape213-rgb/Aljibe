@@ -1,4 +1,4 @@
-import { LuSplit, LuStickyNote, LuClock, LuCircleDot } from 'react-icons/lu';
+import { LuSplit, LuStickyNote, LuCircleDot } from 'react-icons/lu';
 import type { Account, Id, State, Transaction } from '../logic/types.ts';
 import { catIndex } from '../logic/ledger.ts';
 import { formatDay, formatShort } from '../logic/dates.ts';
@@ -31,7 +31,6 @@ export function TxRow({ t, s, showAccount = false, selectable, selected, onToggl
         <span className="title">{t.merchant}</span>
         <span className="xs muted" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <span>{sub}</span>
-          {t.pending ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><LuClock aria-hidden="true" size={12} />Pendiente</span> : null}
           {t.splits.length ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><LuSplit aria-hidden="true" size={12} /><span className="sr">Dividida</span></span> : null}
           {t.notes ? <span style={{ display: 'inline-flex' }}><LuStickyNote aria-hidden="true" size={12} /><span className="sr">Con nota</span></span> : null}
           {t.needsReview ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><LuCircleDot aria-hidden="true" size={12} />Por revisar</span> : null}

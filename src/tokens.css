@@ -1,16 +1,16 @@
 /* Generado por build_tokens.py desde tokens.json. No editar a mano. */
 :root {
-  --color-bg: #F5F6F7;
-  --color-surface: #FFFFFF;
-  --color-surface-sunken: #EBEDEF;
-  --color-border: #DDE0E4;
-  --color-border-input: #7A808A;
-  --color-text: #16181B;
-  --color-text-muted: #555B63;
-  --color-accent: #3F3F9E;
+  --color-bg: #ECEAF4;
+  --color-surface: #F8F7FC;
+  --color-surface-sunken: #DFDCEC;
+  --color-border: #CDC9E0;
+  --color-border-input: #76708F;
+  --color-text: #1F1A33;
+  --color-text-muted: #524D69;
+  --color-accent: #4B2A99;
   --color-on-accent: #FFFFFF;
-  --color-accent-subtle: #E9E9F7;
-  --color-focus-ring: #3F3F9E;
+  --color-accent-subtle: #E2DCF4;
+  --color-focus-ring: #4B2A99;
   --color-danger: #B3261E;
   --color-on-danger: #FFFFFF;
   --color-danger-subtle: #FCE9E7;
@@ -72,17 +72,17 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --color-bg: #111110;
-    --color-surface: #1A1A18;
-    --color-surface-sunken: #0C0C0B;
-    --color-border: #31312D;
-    --color-border-input: #8E8E87;
-    --color-text: #F1F1EE;
-    --color-text-muted: #A8A8A1;
-    --color-accent: #B9B8F2;
-    --color-on-accent: #15153D;
-    --color-accent-subtle: #29294F;
-    --color-focus-ring: #B9B8F2;
+    --color-bg: #1B1727;
+    --color-surface: #251F35;
+    --color-surface-sunken: #151120;
+    --color-border: #3B3452;
+    --color-border-input: #958FB0;
+    --color-text: #EDEAF6;
+    --color-text-muted: #B3ADC8;
+    --color-accent: #C9BBF7;
+    --color-on-accent: #1E1240;
+    --color-accent-subtle: #372B55;
+    --color-focus-ring: #C9BBF7;
     --color-danger: #F2877E;
     --color-on-danger: #2A0A07;
     --color-danger-subtle: #3A1A18;
@@ -103,17 +103,17 @@
   }
 }
 :root[data-theme='dark'] {
-  --color-bg: #111110;
-  --color-surface: #1A1A18;
-  --color-surface-sunken: #0C0C0B;
-  --color-border: #31312D;
-  --color-border-input: #8E8E87;
-  --color-text: #F1F1EE;
-  --color-text-muted: #A8A8A1;
-  --color-accent: #B9B8F2;
-  --color-on-accent: #15153D;
-  --color-accent-subtle: #29294F;
-  --color-focus-ring: #B9B8F2;
+  --color-bg: #1B1727;
+  --color-surface: #251F35;
+  --color-surface-sunken: #151120;
+  --color-border: #3B3452;
+  --color-border-input: #958FB0;
+  --color-text: #EDEAF6;
+  --color-text-muted: #B3ADC8;
+  --color-accent: #C9BBF7;
+  --color-on-accent: #1E1240;
+  --color-accent-subtle: #372B55;
+  --color-focus-ring: #C9BBF7;
   --color-danger: #F2877E;
   --color-on-danger: #2A0A07;
   --color-danger-subtle: #3A1A18;

@@ -69,7 +69,7 @@ assert.equal(ok.length, 3); assert.equal(bad.length, 2);
 assert.equal(ok[2].amountCents, 123456);
 const p1 = planImport(s, 'a-check', ok);
 assert.equal(p1.fresh.length, 3);
-const s2 = { ...s, transactions: [...s.transactions, ...p1.fresh.map((f, i) => ({ id: 'x' + i, accountId: 'a-check', date: f.row.date, amountCents: f.row.amountCents, merchant: f.row.merchant, categoryId: 'c-none', notes: '', tags: [], pending: false, hidden: false, needsReview: false, splits: [], externalId: f.key }))] };
+const s2 = { ...s, transactions: [...s.transactions, ...p1.fresh.map((f, i) => ({ id: 'x' + i, accountId: 'a-check', date: f.row.date, amountCents: f.row.amountCents, merchant: f.row.merchant, categoryId: 'c-none', notes: '', tags: [], hidden: false, needsReview: false, splits: [], externalId: f.key }))] };
 const p2 = planImport(s2, 'a-check', ok);
 assert.equal(p2.fresh.length, 0); assert.equal(p2.skipped, 3);
 // reglas
@@ -94,3 +94,16 @@ assert.deepEqual(xres.ok.map((r) => r.date), ['2026-10-01', '2026-10-01', '2026-
 assert.deepEqual(xres.ok.map((r) => r.amountCents), [-150, -150, 123456, 30, -725]);
 assert.equal(xres.bad.length, 1);
 console.log('lector de Excel ok');
+import { parseXLS } from './src/logic/xls.ts';
+import { findHeader } from './src/logic/importer.ts';
+const xb = fs.readFileSync('./fixtures/banco.xls');
+const old = parseXLS(xb.buffer.slice(xb.byteOffset, xb.byteOffset + xb.byteLength));
+assert.equal(old[1][1], 'Café & Co <centro>');
+const oh = findHeader(old); assert.ok(oh);
+assert.deepEqual(rfc(old, oh.map, oh.index).ok.map((r) => r.amountCents), [-150, -150, 123456, 30, -725]);
+// extracto con filas de titular y saldo antes de la tabla (como el del Santander)
+const pre = [['', '', 'CUENTA ONLINE', 'FECHA', ''], ['', '', 'Titular', 'Saldo', ''], ['Movimientos'], ['FECHA OPERACIÓN', 'FECHA VALOR', 'CONCEPTO', 'IMPORTE EUR', 'SALDO'], ['23/10/2026', '23/10/2026', 'Recibo luz', '-125', '3859.39']];
+const ph = findHeader(pre); assert.equal(ph?.index, 3);
+const pre2 = rfc(pre, ph.map, ph.index); assert.equal(pre2.ok.length, 1); assert.equal(pre2.ok[0].amountCents, -12500);
+assert.equal(findHeader([['a', 'b']]), null);
+console.log('lector de .xls y cabecera con preámbulo ok');

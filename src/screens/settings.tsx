@@ -2,9 +2,10 @@ import { useRef, useState } from 'react';
 import { LuChevronRight, LuTrash2, LuPlus, LuDownload, LuUpload, LuArrowUp, LuArrowDown } from 'react-icons/lu';
 import { BAR_SLOTS, DESTS, WIDGET_NAMES, navOrder, widgetOrder } from '../nav.ts';
 import { parseXLSX } from '../logic/xlsx.ts';
+import { isOLE, parseXLS } from '../logic/xls.ts';
 import type { Route } from '../router.tsx';
 import { useData } from '../store.ts';
-import { guessMapping, parseCSV, planImport, rowsFromCSV, type ImportRow } from '../logic/importer.ts';
+import { findHeader, parseCSV, planImport, rowsFromCSV, type ImportRow } from '../logic/importer.ts';
 import { Banner, Button, EmptyState, Field, IconButton, Segmented, Sheet, toast } from '../ui.tsx';
 import { TopBar } from './shell.tsx';
 import { CategoryPicker } from './common.tsx';
@@ -104,11 +105,16 @@ function DataScreen() {
     if (!f) return;
     if (f.size > 5_000_000) return setCsv({ rows: [], bad: [], error: 'El archivo pesa más de 5 MB.' });
     let rows: string[][];
-    try { rows = /\.xlsx$/i.test(f.name) ? await parseXLSX(await f.arrayBuffer()) : parseCSV(await f.text()); }
+    try {
+      if (/\.(xlsx|xls)$/i.test(f.name)) {
+        const ab = await f.arrayBuffer();
+        rows = isOLE(new Uint8Array(ab)) ? parseXLS(ab) : await parseXLSX(ab); // por contenido, no por extensión
+      } else rows = parseCSV(await f.text());
+    }
     catch (x) { return setCsv({ rows: [], bad: [], error: x instanceof Error ? x.message : 'No se ha podido leer el archivo.' }); }
-    const map = rows.length ? guessMapping(rows[0]) : null;
-    if (!map) return setCsv({ rows: [], bad: [], error: 'No encuentro las columnas. Necesito fecha, concepto e importe (o débito y crédito) en la primera fila.' });
-    { const r = rowsFromCSV(rows, map); setCsv({ rows: r.ok, bad: r.bad }); }
+    const head = findHeader(rows);
+    if (!head) return setCsv({ rows: [], bad: [], error: 'No encuentro las columnas. Necesito una fila con fecha, concepto e importe (o débito y crédito).' });
+    { const r = rowsFromCSV(rows, head.map, head.index); setCsv({ rows: r.ok, bad: r.bad }); }
   };
   const plan = csv && acc ? planImport(s, acc, csv.rows) : null;
   const download = (name: string, text: string, type: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); void markBackup(); };
@@ -119,9 +125,9 @@ function DataScreen() {
         {msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
         <section className="card pad form" aria-label="Importar CSV">
           <h2>Importar desde CSV o Excel</h2>
-          <p className="hint">Archivo .csv o .xlsx (se lee la primera hoja). Primera fila con encabezados: fecha, concepto e importe (o débito y crédito). Fechas día/mes/año, AAAA-MM-DD o fechas de Excel. Importar dos veces el mismo archivo no duplica nada.</p>
+          <p className="hint">Archivo .csv, .xls o .xlsx (se lee la primera hoja). Se busca la fila de encabezados aunque haya filas de titular o saldo encima: fecha, concepto e importe (o débito y crédito). Fechas día/mes/año, AAAA-MM-DD o fechas de Excel. Importar dos veces el mismo archivo no duplica nada.</p>
           <Field id="ia" label="Cuenta de destino">{(p) => <select {...p} className="input" value={acc} onChange={(e) => setAcc(e.target.value)}>{s.accounts.filter((a) => a.group !== 'investments').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</Field>
-          <input ref={file} type="file" accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr" aria-label="Elegir archivo CSV o Excel" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void onCsv(f); }} />
+          <input ref={file} type="file" accept=".csv,.xlsx,.xls,application/vnd.ms-excel,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr" aria-label="Elegir archivo CSV o Excel" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void onCsv(f); }} />
           <Button variant="secondary" onClick={() => file.current?.click()} disabled={!acc}><LuUpload aria-hidden="true" size={18} />Elegir archivo</Button>
           {csv?.error ? <Banner tone="bad">{csv.error}</Banner> : null}
           {csv && !csv.error && plan ? (

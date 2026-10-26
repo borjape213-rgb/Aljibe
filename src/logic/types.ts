@@ -45,7 +45,6 @@ export interface Transaction {
   categoryId: Id;
   notes: string;
   tags: Id[];
-  pending: boolean;
   hidden: boolean;
   needsReview: boolean;
   splits: Split[];

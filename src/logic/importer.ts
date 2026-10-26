@@ -68,10 +68,19 @@ export function guessMapping(header: string[]): Mapping | null {
   return { date, merchant, amount: amount >= 0 ? amount : null, debit: debit >= 0 ? debit : null, credit: credit >= 0 ? credit : null };
 }
 
-export function rowsFromCSV(rows: string[][], map: Mapping): { ok: ImportRow[]; bad: { line: number; reason: string }[] } {
+/** Busca la fila de encabezados en las primeras 40 filas (los bancos suelen poner titular y saldo antes de la tabla). */
+export function findHeader(rows: string[][]): { index: number; map: Mapping } | null {
+  for (let i = 0; i < Math.min(rows.length, 40); i++) {
+    const map = guessMapping(rows[i]);
+    if (map) return { index: i, map };
+  }
+  return null;
+}
+
+export function rowsFromCSV(rows: string[][], map: Mapping, headerIndex = 0): { ok: ImportRow[]; bad: { line: number; reason: string }[] } {
   const ok: ImportRow[] = [], bad: { line: number; reason: string }[] = [];
-  rows.slice(1).forEach((r, i) => {
-    const line = i + 2;
+  rows.slice(headerIndex + 1).forEach((r, i) => {
+    const line = headerIndex + i + 2;
     const date = parseDate(r[map.date] ?? '');
     if (!date) return bad.push({ line, reason: 'Fecha no válida' });
     const merchant = (r[map.merchant] ?? '').trim();
