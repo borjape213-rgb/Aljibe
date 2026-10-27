@@ -46,7 +46,6 @@ export interface Transaction {
   notes: string;
   tags: Id[];
   hidden: boolean;
-  needsReview: boolean;
   splits: Split[];
   externalId?: string;
 }

@@ -13,6 +13,7 @@ import { Recurring } from './screens/recurring.tsx';
 import { Investments, HoldingDetail } from './screens/investments.tsx';
 import { Settings } from './screens/settings.tsx';
 import { TopBar } from './screens/shell.tsx';
+import { needsCategory } from './logic/review.ts';
 import { MonthReview } from './screens/monthreview.tsx';
 import { BAR_SLOTS, DESTS, navOrder } from './nav.ts';
 
@@ -51,14 +52,14 @@ function App() {
     if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
   }, [s.settings.theme]);
   const active = activeNav(r.path);
-  const pendingReview = s.transactions.filter((t) => t.needsReview).length;
+  const pendingReview = s.transactions.filter(needsCategory).length;
   return (
     <div className="app">
       {perr ? <div style={{ padding: '8px 16px' }}><Banner tone="warn">{perr}</Banner></div> : null}
       <Boundary key={r.path.join('/')}><Screen /></Boundary>
       <nav className="bottomnav" aria-label="Principal">
         {navOrder(s.settings).slice(0, BAR_SLOTS).map((id) => ({ id, ...DESTS[id] })).map((n) => (
-          <a key={n.id} href={`#${n.path}`} aria-current={active === n.id ? 'page' : undefined} aria-label={n.id === 'transactions' && pendingReview ? `${n.label}, ${pendingReview} por revisar` : n.label}>
+          <a key={n.id} href={`#${n.path}`} aria-current={active === n.id ? 'page' : undefined} aria-label={n.id === 'transactions' && pendingReview ? `${n.label}, ${pendingReview} sin categoría` : n.label}>
             <span style={{ position: 'relative', display: 'inline-flex' }}>
               <n.icon aria-hidden="true" />
               {n.id === 'transactions' && pendingReview ? <span className="badge" style={{ top: -6, right: -12 }} aria-hidden="true">{pendingReview > 99 ? '99+' : pendingReview}</span> : null}

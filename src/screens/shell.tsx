@@ -4,17 +4,18 @@ import { BAR_SLOTS, DESTS, navOrder } from '../nav.ts';
 import { back, useRoute } from '../router.tsx';
 import { useData } from '../store.ts';
 import { IconButton } from '../ui.tsx';
+import { needsCategory } from '../logic/review.ts';
 
 export function TopBar({ title, back: backTo, end }: { title: string; back?: string; end?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const s = useData();
-  const review = s.transactions.filter((t) => t.needsReview).length;
+  const review = s.transactions.filter(needsCategory).length;
   return (
     <>
       <header className="topbar">
         <div className="side">
           {backTo ? <IconButton label="Volver" onClick={() => back(backTo)}><LuArrowLeft /></IconButton> : <IconButton label="Abrir menú" onClick={() => setOpen(true)} aria-haspopup="dialog"><LuMenu /></IconButton>}
-          {!backTo ? <IconButton label="Revisar transacciones" badge={review} onClick={() => { location.hash = '#/review'; }}><LuBell /></IconButton> : null}
+          {!backTo ? <IconButton label="Transacciones sin categoría" badge={review} onClick={() => { location.hash = '#/review'; }}><LuBell /></IconButton> : null}
         </div>
         <h1>{title}</h1>
         <div className="side end">{end}</div>
@@ -48,7 +49,7 @@ function Drawer({ onClose }: { onClose: () => void }) {
   const items = [
     ...rest,
     { href: '#/month-review', label: 'Revisión del mes', icon: LuCalendarCheck, on: h === 'month-review' },
-    { href: '#/review', label: 'Revisar transacciones', icon: LuListChecks, on: h === 'review' },
+    { href: '#/review', label: 'Sin categoría', icon: LuListChecks, on: h === 'review' },
     { href: '#/settings/categories', label: 'Categorías', icon: LuTag, on: h === 'settings/categories' },
     { href: '#/settings/rules', label: 'Reglas y etiquetas', icon: LuSlidersHorizontal, on: h === 'settings/rules' },
     { href: '#/settings/data', label: 'Datos y copia', icon: LuDownload, on: h === 'settings/data' },

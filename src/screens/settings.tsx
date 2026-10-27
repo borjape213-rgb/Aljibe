@@ -150,7 +150,7 @@ function DataScreen() {
                   <label style={{ display: 'flex', gap: 12, alignItems: 'center', minHeight: 48 }}><input type="checkbox" style={{ width: 22, height: 22 }} checked={doAdjust} onChange={(e) => setAdjust(e.target.checked)} />Ajustar el saldo de la cuenta a {money(target!)}</label>
                 </>
               ) : null}
-              <Button disabled={!plan.fresh.length && !doAdjust} onClick={async () => { const r = await importRows(acc, csv.rows, { setBalanceCents: doAdjust ? target : undefined, holder: csv.info?.holder }); setCsv(null); setMsg({ tone: 'ok', text: `${r.added ? `Importadas ${r.added} transacciones (${r.categorized} con categoría automática, ${r.added - r.categorized} sin categoría)` : 'No había transacciones nuevas'}${r.balanceSet ? '; saldo de la cuenta ajustado' : ''}. Lo importado queda por revisar.` }); }}>{plan.fresh.length ? `Importar ${plan.fresh.length}` : 'Ajustar saldo'}</Button>
+              <Button disabled={!plan.fresh.length && !doAdjust} onClick={async () => { const r = await importRows(acc, csv.rows, { setBalanceCents: doAdjust ? target : undefined, holder: csv.info?.holder }); setCsv(null); setMsg({ tone: 'ok', text: `${r.added ? `Importadas ${r.added} transacciones (${r.categorized} con categoría automática, ${r.added - r.categorized} sin categoría)` : 'No había transacciones nuevas'}${r.balanceSet ? '; saldo de la cuenta ajustado' : ''}. Las que no tienen categoría las puedes asignar desde Movimientos.` }); }}>{plan.fresh.length ? `Importar ${plan.fresh.length}` : 'Ajustar saldo'}</Button>
             </>
           ) : null}
         </section>

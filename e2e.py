@@ -41,12 +41,11 @@ with sync_playwright() as p:
     pg.get_by_role('button',name='Importar 3').click(); pg.wait_for_timeout(300)
     pg.set_input_files('input[aria-label="Elegir archivo CSV o Excel"]','/tmp/imp.csv'); pg.wait_for_timeout(300)
     check('segunda importación sin duplicados', pg.get_by_text(re.compile('0 nuevas, 3 ya existían')).is_visible())
-    # 5 revisión
+    # 5 sin categoría
     pg.goto(U+'#/review'); pg.wait_for_timeout(200)
-    n0=int(re.search(r'(\d+) por revisar', pg.locator('h1').inner_text()).group(1))
-    pg.get_by_role('button',name='Marcar como revisada').click(); pg.wait_for_timeout(200)
-    n1=int(re.search(r'(\d+) por revisar', pg.locator('h1').inner_text()).group(1))
-    check('revisión baja uno', n1==n0-1)
+    n0=int(re.search(r'(\d+) sin categoría', pg.locator('h1').inner_text()).group(1))
+    pg.locator('section[aria-label="Transacción sin categoría"] select').select_option('c-groceries'); pg.wait_for_timeout(300)
+    check('sin categoría baja', pg.get_by_text('Todo categorizado').is_visible() or int(re.search(r'(\d+) sin categoría', pg.locator('h1').inner_text()).group(1))<n0)
     # 6 teclado: Tab hasta enlace del menú y abrir con Enter
     pg.goto(U+'#/accounts'); pg.keyboard.press('Tab'); pg.keyboard.press('Enter'); pg.wait_for_timeout(200)
     check('menú con teclado', pg.get_by_role('navigation',name='Menú').is_visible())

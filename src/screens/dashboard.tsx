@@ -2,6 +2,7 @@ import { Fragment, useMemo, type ReactNode } from 'react';
 import { LuListChecks, LuChevronRight, LuCalendarCheck } from 'react-icons/lu';
 import { widgetOrder } from '../nav.ts';
 import { daysBetween } from '../logic/dates.ts';
+import { needsCategory } from '../logic/review.ts';
 import { resetSeed } from '../actions.ts';
 import { Button } from '../ui.tsx';
 import { useData } from '../store.ts';
@@ -23,7 +24,7 @@ export function Dashboard() {
   const series = useMemo(() => netWorthSeries(s, addDays(today, -30), today), [s, today]);
   const nw = changeOver(series);
   const bs = useMemo(() => budgetSummary(s, month), [s, month]);
-  const review = s.transactions.filter((t) => t.needsReview);
+  const review = s.transactions.filter(needsCategory);
   const occ = occurrencesInMonth(s, month).filter((o) => o.state !== 'paid').slice(0, 3);
   const inv = useMemo(() => {
     const m = new Map<string, ReturnType<typeof holdingRows>[number]>();
@@ -58,7 +59,7 @@ export function Dashboard() {
         ),
     recent: (
           <section className="card" aria-label="Transacciones">
-            <div className="cardhead"><h2>{review.length ? 'Por revisar' : 'Recientes'}</h2><a className="sm" href="#/transactions">Ver todas</a></div>
+            <div className="cardhead"><h2>{review.length ? 'Sin categoría' : 'Recientes'}</h2><a className="sm" href="#/transactions">Ver todas</a></div>
             {(review.length ? review : s.transactions).slice(0, 4).map((t) => <TxRow key={t.id} t={t} s={s} />)}
             {s.transactions.length === 0 ? <EmptyState title="Sin transacciones" text="Añade una desde Movimientos o importa un archivo." /> : null}
           </section>
@@ -100,7 +101,7 @@ export function Dashboard() {
       <main>
         {empty ? <Guide /> : null}
         {!empty && backupDue ? <Banner tone="warn" href="#/settings/data">{backupText}</Banner> : null}
-        {review.length ? <Banner tone="info" href="#/review" icon={<LuListChecks aria-hidden="true" />}>Tienes {review.length} movimientos por revisar.</Banner> : null}
+        {review.length ? <Banner tone="info" href="#/review" icon={<LuListChecks aria-hidden="true" />}>Tienes {review.length} movimientos sin categoría.</Banner> : null}
         {!empty ? widgetOrder(s.settings).filter((x) => x.visible).map((x) => <Fragment key={x.id}>{blocks[x.id] ?? null}</Fragment>) : null}
         <p className="xs muted" style={{ textAlign: 'center' }}>{s.seededAt ? 'Son datos de ejemplo. Vacíalos cuando quieras en Ajustes, Datos y copia.' : ''}</p>
       </main>

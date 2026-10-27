@@ -10,6 +10,7 @@ import { addMonths, daysInMonth, formatMonth, monthStart, todayISO } from '../lo
 import { Amount, Banner, Button, Change, EmptyState, IconButton, ProgressBar, money } from '../ui.tsx';
 import { CHART_COLORS, StackedBar } from '../charts.tsx';
 import { TopBar } from './shell.tsx';
+import { needsCategory } from '../logic/review.ts';
 
 const end = (m: string) => `${m.slice(0, 7)}-${String(daysInMonth(m)).padStart(2, '0')}`;
 const doneKey = (m: string) => `aljibe.monthreview.${m}`;
@@ -32,7 +33,7 @@ export function MonthReview({ route }: { route: Route }) {
   const nw = useMemo(() => netWorthSeries(s, addMonths(month, 0) , end(month)), [s, month]);
   const nwChange = changeOver(nw);
   const occ = useMemo(() => occurrencesInMonth(s, month).filter((o) => o.state === 'overdue'), [s, month]);
-  const pending = s.transactions.filter((t) => t.needsReview && t.date >= month && t.date <= end(month)).length;
+  const pending = s.transactions.filter((t) => needsCategory(t) && t.date >= month && t.date <= end(month)).length;
   const over = bs.buckets.flatMap((b) => b.groups.flatMap((g) => g.rows)).filter((r) => r.remaining < 0).sort((a, b) => a.remaining - b.remaining);
   const saving = cf.net, savingPrev = cfPrev.net;
   const hasData = s.transactions.some((t) => t.date >= month && t.date <= end(month));
@@ -108,8 +109,8 @@ export function MonthReview({ route }: { route: Route }) {
               <section className="mr-page" role="group" aria-roledescription="página" aria-label="Página 5 de 5: pendiente" inert={page !== 4}>
                 <div className="card pad form">
                   <h2>Para cerrar el mes</h2>
-                  <p className="sm" style={{ margin: 0 }}>{pending ? `Quedan ${pending} movimientos por revisar de ${formatMonth(month).toLowerCase()}.` : 'No queda nada por revisar.'}</p>
-                  {pending ? <a className="btn secondary" href="#/review">Revisar ahora</a> : null}
+                  <p className="sm" style={{ margin: 0 }}>{pending ? `Quedan ${pending} movimientos sin categoría de ${formatMonth(month).toLowerCase()}.` : 'Todos los movimientos del mes tienen categoría.'}</p>
+                  {pending ? <a className="btn secondary" href="#/review">Categorizar ahora</a> : null}
                   <p className="sm" style={{ margin: 0 }}>{occ.length ? `Hay ${occ.length} pagos recurrentes sin cobrar: ${occ.slice(0, 3).map((o) => o.stream.name).join(', ')}${occ.length > 3 ? '…' : ''}.` : 'Todos los recurrentes del mes están al día.'}</p>
                   <Button onClick={finish} disabled={done}>{done ? <><LuCheck aria-hidden="true" size={18} />Mes revisado</> : 'Marcar el mes como revisado'}</Button>
                 </div>

@@ -69,7 +69,7 @@ assert.equal(ok.length, 3); assert.equal(bad.length, 2);
 assert.equal(ok[2].amountCents, 123456);
 const p1 = planImport(s, 'a-check', ok);
 assert.equal(p1.fresh.length, 3);
-const s2 = { ...s, transactions: [...s.transactions, ...p1.fresh.map((f, i) => ({ id: 'x' + i, accountId: 'a-check', date: f.row.date, amountCents: f.row.amountCents, merchant: f.row.merchant, categoryId: 'c-none', notes: '', tags: [], hidden: false, needsReview: false, splits: [], externalId: f.key }))] };
+const s2 = { ...s, transactions: [...s.transactions, ...p1.fresh.map((f, i) => ({ id: 'x' + i, accountId: 'a-check', date: f.row.date, amountCents: f.row.amountCents, merchant: f.row.merchant, categoryId: 'c-none', notes: '', tags: [], hidden: false, splits: [], externalId: f.key }))] };
 const p2 = planImport(s2, 'a-check', ok);
 assert.equal(p2.fresh.length, 0); assert.equal(p2.skipped, 3);
 // reglas
@@ -129,11 +129,11 @@ const sg = suggestCategories(cs, [
 ], 'PEREZ DE LA IGLESIA ANA');
 assert.equal(sg.byId.get('a'), 'c-groceries'); assert.equal(sg.byId.get('b'), 'c-subs'); assert.equal(sg.byId.has('c'), false);
 // aprende de lo que ya categorizaste tú
-cs.transactions = [{ id: 'x', accountId: 'a-check', date: '2026-09-01', amountCents: -500, merchant: 'Compra Zorbax Qwerty', categoryId: 'c-fun', notes: '', tags: [], hidden: false, needsReview: false, splits: [] }];
+cs.transactions = [{ id: 'x', accountId: 'a-check', date: '2026-09-01', amountCents: -500, merchant: 'Compra Zorbax Qwerty', categoryId: 'c-fun', notes: '', tags: [], hidden: false, splits: [] }];
 assert.equal(suggestCategories(cs, [{ id: 'c', merchant: 'Compra Zorbax Qwerty 99', amountCents: -500 }]).byId.get('c'), undefined); // otro nombre → no se inventa
 assert.equal(suggestCategories(cs, [{ id: 'c', merchant: 'Compra Zorbax Qwerty', amountCents: -700 }]).byId.get('c'), 'c-fun');
 // recurrente que cambia de código de pedido cada mes (Spotify) y con un mes de hueco
-const mk = (date, merchant, cents) => ({ id: date + merchant, accountId: 'a-check', date, amountCents: cents, merchant, categoryId: 'c-subs', notes: '', tags: [], hidden: false, needsReview: false, splits: [] });
+const mk = (date, merchant, cents) => ({ id: date + merchant, accountId: 'a-check', date, amountCents: cents, merchant, categoryId: 'c-subs', notes: '', tags: [], hidden: false, splits: [] });
 cs.transactions = [mk('2026-06-14', 'Compra Spotify P4aaaa111, Stockholm', -2099), mk('2026-07-14', 'Compra Spotify P4bbbb222, Stockholm', -2099), mk('2026-09-15', 'Compra Spotify P4cccc333, Stockholm', -2099), mk('2026-10-14', 'Compra Spotify P4dddd444, Stockholm', -2099)];
 const spotDet = detectRecurring(cs);
 assert.equal(spotDet.length, 1); assert.equal(spotDet[0].name, 'Spotify'); assert.equal(spotDet[0].amountCents, -2099); assert.equal(spotDet[0].dayOfMonth, 14);
@@ -172,7 +172,7 @@ console.log('saldo del extracto, categorías automáticas y recurrentes ok');
   assert.equal(cat('Bizum De Pepe', 1000), 'c-otherinc');
   assert.equal(cat('Bizum A Favor De Pepe', -1000), undefined);
   // lo último que has elegido para un comercio manda sobre el diccionario
-  const t = (id, date, cat) => ({ id, accountId: 'a-check', date, amountCents: -1000, merchant: 'Compra Mercadona', categoryId: cat, notes: '', tags: [], hidden: false, needsReview: false, splits: [] });
+  const t = (id, date, cat) => ({ id, accountId: 'a-check', date, amountCents: -1000, merchant: 'Compra Mercadona', categoryId: cat, notes: '', tags: [], hidden: false, splits: [] });
   ds.transactions = [t('1', '2026-05-01', 'c-groceries'), t('2', '2026-06-01', 'c-groceries'), t('3', '2026-07-01', 'c-shopping')];
   assert.equal(cat('Compra Mercadona'), 'c-shopping');
 }
@@ -181,7 +181,7 @@ console.log('reglas de categorías ok');
 // ---- categorizar uno sin categoría arrastra a los demás del mismo comercio ----
 import { sameMerchantUncategorized } from './src/logic/merchants.ts';
 {
-  const mkt = (id, merchant, cents, cat = 'c-none', extra = {}) => ({ id, accountId: 'a-check', date: '2026-09-01', amountCents: cents, merchant, categoryId: cat, notes: '', tags: [], hidden: false, needsReview: false, splits: [], ...extra });
+  const mkt = (id, merchant, cents, cat = 'c-none', extra = {}) => ({ id, accountId: 'a-check', date: '2026-09-01', amountCents: cents, merchant, categoryId: cat, notes: '', tags: [], hidden: false, splits: [], ...extra });
   const txs = [
     mkt('p1', 'Recibo Paypal (europe) S.a R.l. Et Cie, S.c.a Nº recibo 123', -1129),
     mkt('p2', 'Recibo Paypal (europe) S.a R.l. Et Cie, S.c.a Nº recibo 987', -500),
@@ -196,3 +196,17 @@ import { sameMerchantUncategorized } from './src/logic/merchants.ts';
   assert.deepEqual(sameMerchantUncategorized(txs, ['o1']), []);
 }
 console.log('propagación de categoría ok');
+
+// ---- cola de "Sin categoría": los saltados van al final, en el orden en que se saltan ----
+import { categorizeQueue, needsCategory } from './src/logic/review.ts';
+{
+  const q = (id, cat = 'c-none', extra = {}) => ({ id, accountId: 'a-check', date: '2026-09-01', amountCents: -100, merchant: id, categoryId: cat, notes: '', tags: [], hidden: false, splits: [], ...extra });
+  const txs = [q('a'), q('b'), q('c'), q('d'), q('e', 'c-fun'), q('f', 'c-none', { hidden: true }), q('g', 'c-none', { splits: [{ categoryId: 'c-fun', amountCents: -100 }] })];
+  const ids = (l) => l.map((t) => t.id);
+  assert.deepEqual(ids(categorizeQueue(txs, [])), ['a', 'b', 'c', 'd']);                 // solo sin categoría, visibles y sin dividir
+  assert.deepEqual(ids(categorizeQueue(txs, ['a'])), ['b', 'c', 'd', 'a']);              // saltar "a": pasa al final
+  assert.deepEqual(ids(categorizeQueue(txs, ['a', 'b'])), ['c', 'd', 'a', 'b']);         // el último saltado, el último
+  assert.deepEqual(ids(categorizeQueue(txs.map((t) => (t.id === 'b' ? { ...t, categoryId: 'c-fun' } : t)), ['a', 'b'])), ['c', 'd', 'a']); // un saltado ya categorizado desaparece
+  assert.equal(needsCategory(txs[0]), true); assert.equal(needsCategory(txs[4]), false);
+}
+console.log('cola de sin categoría ok');

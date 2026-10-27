@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { State } from './logic/types.ts';
+import type { State, Transaction } from './logic/types.ts';
 import { buildSeed } from './logic/seed.ts';
 import { defaultBudgets } from './logic/budget.ts';
 import { addMonths, monthStart, todayISO } from './logic/dates.ts';
@@ -49,10 +49,20 @@ export function emptyState(settings?: State['settings']): State {
   return { ...seed, accounts: [], transactions: [], budgetItems: [], rollovers: [], recurring: [], holdings: [], prices: {}, securities: [], benchmarks: [], rules: [], settings: settings ?? seed.settings, seededAt: null };
 }
 
+/** Quita la marca "por revisar" que guardaban las versiones anteriores en cada transacción. */
+export function dropLegacyReview(st: State): State {
+  if (!st.transactions.some((t) => 'needsReview' in t)) return st;
+  return { ...st, transactions: st.transactions.map((t) => { const { needsReview: _drop, ...rest } = t as Transaction & { needsReview?: boolean }; return rest; }) };
+}
+
 export async function init(): Promise<State> {
   try {
     const saved = await idbGet();
-    if (saved && saved.version === 1) { state = saved; return state; }
+    if (saved && saved.version === 1) {
+      state = dropLegacyReview(saved);
+      if (state !== saved) void idbSet(state).catch(() => { persistError = 'No se puede guardar en este navegador; los datos se perderán al cerrar.'; });
+      return state;
+    }
   } catch (e) {
     persistError = 'No se puede guardar en este navegador; los datos se perderán al cerrar.';
   }

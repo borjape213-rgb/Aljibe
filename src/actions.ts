@@ -1,5 +1,5 @@
 import type { Account, Id, RecurringStream, Split, State, Transaction } from './logic/types.ts';
-import { getState, mutate, setState, freshSeed, emptyState } from './store.ts';
+import { getState, mutate, setState, freshSeed, emptyState, dropLegacyReview } from './store.ts';
 import { applyRules, planImport, type ImportRow } from './logic/importer.ts';
 import { monthStart } from './logic/dates.ts';
 import { sameMerchantUncategorized, suggestCategories } from './logic/merchants.ts';
@@ -14,7 +14,7 @@ export async function createTransaction(input: { accountId: Id; date: string; am
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new ValidationError('La fecha no es válida.');
   const s = getState();
   const ruled = applyRules(s.rules, { merchant: input.merchant.trim(), categoryId: input.categoryId });
-  const t: Transaction = { id: uid('t'), accountId: input.accountId, date: input.date, amountCents: input.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId, notes: input.notes ?? '', tags: [], hidden: false, needsReview: false, splits: [] };
+  const t: Transaction = { id: uid('t'), accountId: input.accountId, date: input.date, amountCents: input.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId, notes: input.notes ?? '', tags: [], hidden: false, splits: [] };
   const acc = s.accounts.find((a) => a.id === input.accountId);
   mutate((st) => ({ ...st, transactions: [t, ...st.transactions].sort(byDateDesc), accounts: st.accounts.map((a) => (a.id === input.accountId && a.group !== 'investments' ? { ...a, balanceCents: a.balanceCents + t.amountCents } : a)) }));
   void acc;
@@ -26,7 +26,7 @@ const byDateDesc = (a: Transaction, b: Transaction) => (a.date === b.date ? 0 : 
  * Cambia campos de varias transacciones. Si pones categoría a movimientos que estaban "Sin categoría", los demás
  * "Sin categoría" del mismo comercio (y mismo signo) pasan a esa categoría. Devuelve cuántos se han añadido así.
  */
-export async function updateTransactions(ids: Id[], patch: Partial<Pick<Transaction, 'categoryId' | 'merchant' | 'notes' | 'tags' | 'hidden' | 'needsReview' | 'date'>>): Promise<number> {
+export async function updateTransactions(ids: Id[], patch: Partial<Pick<Transaction, 'categoryId' | 'merchant' | 'notes' | 'tags' | 'hidden' | 'date'>>): Promise<number> {
   const set = new Set(ids);
   const before = getState();
   const extra = new Set<Id>(patch.categoryId && patch.categoryId !== 'c-none' ? sameMerchantUncategorized(before.transactions, ids) : []);
@@ -106,7 +106,7 @@ export async function importRows(accountId: Id, rows: ImportRow[], opts: { setBa
   const holder = opts.holder ?? s.settings.holder;
   const staged = fresh.map(({ row, key }) => ({ id: uid('t'), row, key, ruled: applyRules(s.rules, { merchant: row.merchant, categoryId: 'c-none' }) }));
   const sugg = suggestCategories(s, staged.filter((x) => x.ruled.categoryId === 'c-none').map((x) => ({ id: x.id, merchant: x.ruled.merchant, amountCents: x.row.amountCents })), holder);
-  const news: Transaction[] = staged.map(({ id, row, key, ruled }) => ({ id, accountId, date: row.date, amountCents: row.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId !== 'c-none' ? ruled.categoryId : sugg.byId.get(id) ?? 'c-none', notes: '', tags: [], hidden: false, needsReview: true, splits: [], externalId: key }));
+  const news: Transaction[] = staged.map(({ id, row, key, ruled }) => ({ id, accountId, date: row.date, amountCents: row.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId !== 'c-none' ? ruled.categoryId : sugg.byId.get(id) ?? 'c-none', notes: '', tags: [], hidden: false, splits: [], externalId: key }));
   const delta = news.reduce((n, t) => n + t.amountCents, 0);
   const setBalance = opts.setBalanceCents;
   mutate((st) => ({
@@ -172,7 +172,7 @@ export async function importJSON(text: string): Promise<void> {
   try { parsed = JSON.parse(text); } catch { throw new ValidationError('El archivo no es una copia de seguridad válida.'); }
   const p = parsed as State;
   if (!p || p.version !== 1 || !Array.isArray(p.accounts) || !Array.isArray(p.transactions) || !Array.isArray(p.categories)) throw new ValidationError('El archivo no es una copia de seguridad válida.');
-  setState(p);
+  setState(dropLegacyReview(p));
 }
 export async function resetSeed() { setState(freshSeed()); }
 export async function clearAll() { setState(emptyState(getState().settings)); }
