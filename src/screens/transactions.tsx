@@ -76,7 +76,7 @@ function BulkSheet({ s, ids, onClose }: { s: State; ids: Id[]; onClose: (done: b
       <div className="form">
         <Field id="bc" label="Nueva categoría">{() => <CategoryPicker s={s} value={c} onChange={setC} />}</Field>
         <p className="hint">Las transacciones divididas pierden la división.</p>
-        <div className="btnrow"><Button variant="secondary" onClick={() => onClose(false)}>Cancelar</Button><Button onClick={async () => { await updateTransactions(ids, { categoryId: c }); toast(`${ids.length} transacciones actualizadas`); onClose(true); }}>Aplicar</Button></div>
+        <div className="btnrow"><Button variant="secondary" onClick={() => onClose(false)}>Cancelar</Button><Button onClick={async () => { const n = await updateTransactions(ids, { categoryId: c }); toast(`${ids.length} transacciones actualizadas${n ? `, y ${n} más sin categoría del mismo comercio` : ''}`); onClose(true); }}>Aplicar</Button></div>
       </div>
     </Sheet>
   );
@@ -127,7 +127,7 @@ export function TransactionDetail({ id }: { id: string }) {
   const [notes, setNotes] = useState(t?.notes ?? '');
   const [confirm, setConfirm] = useState(false);
   if (!t) return <><TopBar title="Transacción" back="/transactions" /><main><Banner tone="warn">No encontramos esa transacción. <a href="#/transactions">Volver a la lista</a></Banner></main></>;
-  const save = async (patch: Parameters<typeof updateTransactions>[1]) => { await updateTransactions([t.id], patch); };
+  const save = async (patch: Parameters<typeof updateTransactions>[1]) => { const n = await updateTransactions([t.id], patch); if (n) toast(`${n} más sin categoría del mismo comercio, también actualizadas`); };
   return (
     <>
       <TopBar title="Transacción" back="/transactions" />
@@ -222,7 +222,7 @@ export function Review() {
             <div className="progress" role="progressbar" aria-label="Avance de la revisión" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}><i style={{ width: `${total ? (done / total) * 100 : 0}%`, background: 'var(--color-accent)' }} /></div>
             <section className="card pad form" aria-label="Transacción a revisar">
               <div><div className="lg b6">{t.merchant}</div><div className="sm muted">{formatDay(t.date)} · {names.acc(t.accountId)}</div><div className="xl b6"><Amount cents={t.amountCents} signed /></div></div>
-              <div className="field"><span className="lbl">Categoría</span><CategoryPicker s={s} value={t.categoryId} onChange={(c) => void updateTransactions([t.id], { categoryId: c, needsReview: true })} /></div>
+              <div className="field"><span className="lbl">Categoría</span><CategoryPicker s={s} value={t.categoryId} onChange={async (c) => { const n = await updateTransactions([t.id], { categoryId: c, needsReview: true }); if (n) toast(`${n} más sin categoría del mismo comercio, también actualizadas`); }} /></div>
               <div className="field"><span className="lbl">Etiquetas</span><div className="chips wrap">{s.tags.map((tg) => <Chip key={tg.id} selected={t.tags.includes(tg.id)} onClick={() => void updateTransactions([t.id], { tags: t.tags.includes(tg.id) ? t.tags.filter((x) => x !== tg.id) : [...t.tags, tg.id] })}>{tg.name}</Chip>)}</div></div>
               {t.categoryId === 'c-none' ? <Banner tone="warn">Esta transacción no tiene categoría.</Banner> : null}
               <a className="sm" href={`#/transaction/${t.id}`}>Abrir detalle completo</a>

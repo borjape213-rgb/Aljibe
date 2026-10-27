@@ -2,7 +2,7 @@ import type { Account, Id, RecurringStream, Split, State, Transaction } from './
 import { getState, mutate, setState, freshSeed, emptyState } from './store.ts';
 import { applyRules, planImport, type ImportRow } from './logic/importer.ts';
 import { monthStart } from './logic/dates.ts';
-import { suggestCategories } from './logic/merchants.ts';
+import { sameMerchantUncategorized, suggestCategories } from './logic/merchants.ts';
 
 const uid = (p: string) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
@@ -22,11 +22,18 @@ export async function createTransaction(input: { accountId: Id; date: string; am
 }
 const byDateDesc = (a: Transaction, b: Transaction) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1);
 
-export async function updateTransactions(ids: Id[], patch: Partial<Pick<Transaction, 'categoryId' | 'merchant' | 'notes' | 'tags' | 'hidden' | 'needsReview' | 'date'>>): Promise<void> {
+/**
+ * Cambia campos de varias transacciones. Si pones categoría a movimientos que estaban "Sin categoría", los demás
+ * "Sin categoría" del mismo comercio (y mismo signo) pasan a esa categoría. Devuelve cuántos se han añadido así.
+ */
+export async function updateTransactions(ids: Id[], patch: Partial<Pick<Transaction, 'categoryId' | 'merchant' | 'notes' | 'tags' | 'hidden' | 'needsReview' | 'date'>>): Promise<number> {
   const set = new Set(ids);
+  const before = getState();
+  const extra = new Set<Id>(patch.categoryId && patch.categoryId !== 'c-none' ? sameMerchantUncategorized(before.transactions, ids) : []);
   mutate((s) => ({
     ...s,
     transactions: s.transactions.map((t) => {
+      if (extra.has(t.id)) return { ...t, categoryId: patch.categoryId! };
       if (!set.has(t.id)) return t;
       const next = { ...t, ...patch };
       // si cambia la categoría de una transacción dividida, se deshace la división
@@ -34,6 +41,7 @@ export async function updateTransactions(ids: Id[], patch: Partial<Pick<Transact
       return next;
     }).sort(byDateDesc),
   }));
+  return extra.size;
 }
 
 export async function setSplits(id: Id, splits: Split[]): Promise<void> {

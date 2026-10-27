@@ -177,3 +177,22 @@ console.log('saldo del extracto, categorías automáticas y recurrentes ok');
   assert.equal(cat('Compra Mercadona'), 'c-shopping');
 }
 console.log('reglas de categorías ok');
+
+// ---- categorizar uno sin categoría arrastra a los demás del mismo comercio ----
+import { sameMerchantUncategorized } from './src/logic/merchants.ts';
+{
+  const mkt = (id, merchant, cents, cat = 'c-none', extra = {}) => ({ id, accountId: 'a-check', date: '2026-09-01', amountCents: cents, merchant, categoryId: cat, notes: '', tags: [], hidden: false, needsReview: false, splits: [], ...extra });
+  const txs = [
+    mkt('p1', 'Recibo Paypal (europe) S.a R.l. Et Cie, S.c.a Nº recibo 123', -1129),
+    mkt('p2', 'Recibo Paypal (europe) S.a R.l. Et Cie, S.c.a Nº recibo 987', -500),
+    mkt('p3', 'Recibo Paypal (europe) S.a R.l. Et Cie, S.c.a Nº recibo 555', -700, 'c-fun'),       // ya categorizado: no se toca
+    mkt('p4', 'Recibo Paypal (europe) S.a R.l. Et Cie, S.c.a Nº recibo 321', -300, 'c-none', { hidden: true }), // oculto: no
+    mkt('p5', 'Recibo Paypal (europe) S.a R.l. Et Cie, S.c.a Nº recibo 222', 2000),                 // devolución: otro signo, no
+    mkt('p6', 'Recibo Paypal (europe) S.a R.l. Et Cie, S.c.a Nº recibo 444', -400, 'c-none', { splits: [{ categoryId: 'c-fun', amountCents: -400 }] }), // dividido: no
+    mkt('o1', 'Compra Otra Tienda Zorbax', -999),
+  ];
+  assert.deepEqual(sameMerchantUncategorized(txs, ['p1']), ['p2']);
+  assert.deepEqual(sameMerchantUncategorized(txs, ['p3']), []);          // p3 ya tenía categoría: nada que arrastrar
+  assert.deepEqual(sameMerchantUncategorized(txs, ['o1']), []);
+}
+console.log('propagación de categoría ok');

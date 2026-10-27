@@ -1,4 +1,4 @@
-import type { Category, Id, State } from './types.ts';
+import type { Category, Id, State, Transaction } from './types.ts';
 
 /** Quita tildes y pasa a minúsculas con espacios simples. */
 const plain = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -182,4 +182,13 @@ export function suggestCategories(s: State, items: CatInput[], holder: string | 
     if (k) byId.set(it.id, resolve(k));
   }
   return { byId, created: [...created.values()] };
+}
+
+/** Movimientos "Sin categoría" (visibles, sin dividir) del mismo comercio y signo que los de `ids` que ahora están sin categoría. No incluye los propios `ids`. */
+export function sameMerchantUncategorized(txs: Transaction[], ids: Id[]): Id[] {
+  const set = new Set(ids);
+  const keyOf = (t: Transaction) => `${Math.sign(t.amountCents)}|${merchantKey(t.merchant)}`;
+  const keys = new Set(txs.filter((t) => set.has(t.id) && t.categoryId === 'c-none').map(keyOf));
+  if (!keys.size) return [];
+  return txs.filter((t) => !set.has(t.id) && t.categoryId === 'c-none' && !t.hidden && !t.splits.length && keys.has(keyOf(t))).map((t) => t.id);
 }
