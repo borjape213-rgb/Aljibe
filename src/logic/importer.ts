@@ -117,3 +117,39 @@ export function planImport(s: State, accountId: Id, rows: ImportRow[]) {
   rows.forEach((row, i) => (existing.has(keys[i]) ? skipped++ : fresh.push({ row, key: keys[i] })));
   return { fresh, skipped };
 }
+
+export interface StatementInfo {
+  /** Saldo que indica el extracto, en céntimos. */
+  balanceCents?: number;
+  /** Titular de la cuenta, si el extracto lo trae antes de la tabla. */
+  holder?: string;
+}
+
+/** Saca saldo y titular de las filas de antes de la tabla (o, si no, de la columna de saldo del movimiento más reciente). */
+export function statementInfo(rows: string[][], headerIndex: number, map: Mapping): StatementInfo {
+  const info: StatementInfo = {};
+  const num = (x: string | undefined) => (x ? parseCents(x.replace(/[A-Za-z€$£]/g, '').trim()) : null);
+  for (let r = 0; r < headerIndex; r++) {
+    for (let c = 0; c < rows[r].length; c++) {
+      const cell = (rows[r][c] ?? '').trim().toLowerCase();
+      if (cell === 'titular' && !info.holder) { const h = (rows[r + 1]?.[c] ?? '').trim(); if (h && r + 1 < headerIndex) info.holder = h; }
+      if (/^saldo\b/.test(cell) && info.balanceCents === undefined) {
+        const v = (r + 1 < headerIndex ? num(rows[r + 1]?.[c]) : null) ?? num(rows[r][c + 1]);
+        if (v !== null && v !== undefined) info.balanceCents = v;
+      }
+    }
+  }
+  if (info.balanceCents === undefined) {
+    const col = (rows[headerIndex] ?? []).findIndex((h) => /^(saldo|balance)/i.test(h.trim()));
+    if (col >= 0) {
+      const body = rows.slice(headerIndex + 1).map((r) => ({ date: parseDate(r[map.date] ?? ''), bal: num(r[col]) })).filter((x) => x.date && x.bal !== null);
+      if (body.length) {
+        const newestFirst = body[0].date! >= body[body.length - 1].date!;
+        const max = body.reduce((m, x) => (x.date! > m ? x.date! : m), '');
+        const same = body.filter((x) => x.date === max);
+        info.balanceCents = (newestFirst ? same[0] : same[same.length - 1]).bal!;
+      }
+    }
+  }
+  return info;
+}

@@ -107,3 +107,37 @@ const ph = findHeader(pre); assert.equal(ph?.index, 3);
 const pre2 = rfc(pre, ph.map, ph.index); assert.equal(pre2.ok.length, 1); assert.equal(pre2.ok[0].amountCents, -12500);
 assert.equal(findHeader([['a', 'b']]), null);
 console.log('lector de .xls y cabecera con preámbulo ok');
+
+// ---- saldo del extracto, categorías automáticas y recurrentes ----
+import { statementInfo } from './src/logic/importer.ts';
+import { merchantKey, suggestCategories, isHolder } from './src/logic/merchants.ts';
+const sinfo = statementInfo(
+  [['', '', 'CUENTA', 'FECHA'], ['', '', 'Titular', 'Saldo'], ['', '', 'PEREZ DE LA IGLESIA ANA', '3.776,07 EUR'], ['Movimientos'], ['FECHA', 'CONCEPTO', 'IMPORTE', 'SALDO'], ['26/10/2026', 'Compra X', '-10', '3776.07']],
+  4, { date: 0, merchant: 1, amount: 2, debit: null, credit: null });
+assert.equal(sinfo.balanceCents, 377607); assert.equal(sinfo.holder, 'PEREZ DE LA IGLESIA ANA');
+// sin saldo en el preámbulo: usa la columna SALDO del movimiento más reciente
+const sinfo2 = statementInfo([['FECHA', 'CONCEPTO', 'IMPORTE', 'SALDO'], ['26/10/2026', 'Compra X', '-10', '90.00'], ['25/10/2026', 'Compra Y', '-5', '100.00']], 0, { date: 0, merchant: 1, amount: 2, debit: null, credit: null });
+assert.equal(sinfo2.balanceCents, 9000);
+assert.ok(isHolder('Transferencia A Favor De Ana Perez De La Iglesia', 'PEREZ DE LA IGLESIA ANA'));
+// el mismo comercio con códigos y tarjetas distintos tiene la misma clave
+assert.equal(merchantKey('Compra Spotify P47eb1a2c9, Stockholm, Tarjeta 5489010334403142 , Comision 0,00'), merchantKey('Compra Spotify P44802f1d3, Stockholm, Tarjeta 5489010334403142 , Comision 0,00'));
+const cs = buildSeed(); cs.transactions = []; cs.recurring = [];
+const sg = suggestCategories(cs, [
+  { id: 'a', merchant: 'Compra Mercadona Sevilla, Tarjeta 1111222233334444', amountCents: -2350 },
+  { id: 'b', merchant: 'Compra Spotify P47eb1a2c9, Stockholm', amountCents: -1099 },
+  { id: 'c', merchant: 'Compra Zorbax Qwerty', amountCents: -500 },
+], 'PEREZ DE LA IGLESIA ANA');
+assert.equal(sg.byId.get('a'), 'c-groceries'); assert.equal(sg.byId.get('b'), 'c-subs'); assert.equal(sg.byId.has('c'), false);
+// aprende de lo que ya categorizaste tú
+cs.transactions = [{ id: 'x', accountId: 'a-check', date: '2026-09-01', amountCents: -500, merchant: 'Compra Zorbax Qwerty', categoryId: 'c-fun', notes: '', tags: [], hidden: false, needsReview: false, splits: [] }];
+assert.equal(suggestCategories(cs, [{ id: 'c', merchant: 'Compra Zorbax Qwerty 99', amountCents: -500 }]).byId.get('c'), undefined); // otro nombre → no se inventa
+assert.equal(suggestCategories(cs, [{ id: 'c', merchant: 'Compra Zorbax Qwerty', amountCents: -700 }]).byId.get('c'), 'c-fun');
+// recurrente que cambia de código de pedido cada mes (Spotify) y con un mes de hueco
+const mk = (date, merchant, cents) => ({ id: date + merchant, accountId: 'a-check', date, amountCents: cents, merchant, categoryId: 'c-subs', notes: '', tags: [], hidden: false, needsReview: false, splits: [] });
+cs.transactions = [mk('2026-06-14', 'Compra Spotify P4aaaa111, Stockholm', -2099), mk('2026-07-14', 'Compra Spotify P4bbbb222, Stockholm', -2099), mk('2026-09-15', 'Compra Spotify P4cccc333, Stockholm', -2099), mk('2026-10-14', 'Compra Spotify P4dddd444, Stockholm', -2099)];
+const spotDet = detectRecurring(cs);
+assert.equal(spotDet.length, 1); assert.equal(spotDet[0].name, 'Spotify'); assert.equal(spotDet[0].amountCents, -2099); assert.equal(spotDet[0].dayOfMonth, 14);
+// compras sueltas del mismo comercio en el mismo mes no son recurrentes
+cs.transactions = [mk('2026-08-03', 'Compra Mercadona', -1000), mk('2026-08-10', 'Compra Mercadona', -1000), mk('2026-08-17', 'Compra Mercadona', -1000)];
+assert.equal(detectRecurring(cs).length, 0);
+console.log('saldo del extracto, categorías automáticas y recurrentes ok');

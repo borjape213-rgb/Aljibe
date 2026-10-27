@@ -9,7 +9,7 @@ import { todayISO, formatDay } from '../logic/dates.ts';
 import { Amount, Banner, Button, Chip, EmptyState, Field, IconButton, Segmented, Sheet, money, toast } from '../ui.tsx';
 import { TopBar } from './shell.tsx';
 import { CategoryPicker, DayGroups, useNames } from './common.tsx';
-import { createTransaction, deleteTransaction, setSplits, updateTransactions, ValidationError } from '../actions.ts';
+import { categorizeUncategorized, createTransaction, deleteTransaction, setSplits, updateTransactions, ValidationError } from '../actions.ts';
 
 const PAGE = 60;
 
@@ -208,6 +208,7 @@ export function Review() {
   const names = useNames(s);
   const [skipped, setSkipped] = useState<Id[]>([]);
   const queue = s.transactions.filter((t) => t.needsReview && !skipped.includes(t.id));
+  const uncategorized = s.transactions.filter((x) => x.categoryId === 'c-none' && !x.hidden).length;
   const t = queue[0];
   const [done, setDone] = useState(0);
   const total = queue.length + done;
@@ -217,6 +218,7 @@ export function Review() {
       <main>
         {!t ? <EmptyState icon={<LuCheck size={32} aria-hidden="true" />} title="Todo al día" text={skipped.length ? `Has saltado ${skipped.length}. Siguen marcadas por revisar.` : 'No queda nada pendiente.'} action={<>{skipped.length ? <Button variant="secondary" onClick={() => setSkipped([])}>Volver a las saltadas</Button> : null}<a className="btn" href="#/">Volver al inicio</a></>} /> : (
           <>
+            {uncategorized ? <Banner tone="info" onClick={async () => { const r = await categorizeUncategorized(); toast(r.assigned ? `Categorizados ${r.assigned}${r.remaining ? `; ${r.remaining} siguen sin categoría` : ''}` : 'No reconozco ninguno; elige categoría y aprenderé de ello'); }}>{uncategorized} sin categoría. Toca para categorizarlas automáticamente.</Banner> : null}
             <div className="progress" role="progressbar" aria-label="Avance de la revisión" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}><i style={{ width: `${total ? (done / total) * 100 : 0}%`, background: 'var(--color-accent)' }} /></div>
             <section className="card pad form" aria-label="Transacción a revisar">
               <div><div className="lg b6">{t.merchant}</div><div className="sm muted">{formatDay(t.date)} · {names.acc(t.accountId)}</div><div className="xl b6"><Amount cents={t.amountCents} signed /></div></div>

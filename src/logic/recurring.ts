@@ -1,5 +1,6 @@
 import type { RecurringStream, State, Transaction } from './types.ts';
 import { addDays, daysBetween, daysInMonth, iso, monthStart, parse, todayISO } from './dates.ts';
+import { merchantKey, prettyName } from './merchants.ts';
 
 export interface Occurrence {
   stream: RecurringStream;
@@ -20,7 +21,7 @@ export function datesInMonth(r: RecurringStream, month: string): string[] {
 
 const norm = (x: string) => x.trim().toLowerCase();
 export function matchPayment(s: State, r: RecurringStream, date: string): Transaction | undefined {
-  return s.transactions.find((t) => t.accountId === r.accountId && !t.hidden && Math.abs(daysBetween(date, t.date)) <= 4 && norm(t.merchant) === norm(r.name) && Math.sign(t.amountCents) === Math.sign(r.amountCents));
+  return s.transactions.find((t) => t.accountId === r.accountId && !t.hidden && Math.abs(daysBetween(date, t.date)) <= 4 && (norm(t.merchant) === norm(r.name) || merchantKey(t.merchant) === merchantKey(r.name)) && Math.sign(t.amountCents) === Math.sign(r.amountCents));
 }
 
 export function occurrencesInMonth(s: State, month: string, today = todayISO()): Occurrence[] {
@@ -35,29 +36,41 @@ export function occurrencesInMonth(s: State, month: string, today = todayISO()):
   return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.stream.name.localeCompare(b.stream.name)));
 }
 
-/** Comerciantes con ≥3 cobros en meses distintos, importe estable y día parecido, que aún no son recurrentes. */
+/** Índice absoluto de mes para medir huecos entre cobros. */
+const monthIdx = (d: string) => { const { y, m } = parse(d); return y * 12 + m; };
+
+/**
+ * Comercios con cobros mensuales parecidos que aún no son recurrentes. Agrupa por el nombre limpio del comercio
+ * (sin números de tarjeta ni códigos de pedido), así "Compra Spotify P47eb…" y "Compra Spotify P44802…" cuentan como uno.
+ * Exige ≥3 meses, un cobro por mes, como mucho un mes sin cobro entre medias, importe estable y día parecido.
+ */
 export function detectRecurring(s: State): RecurringStream[] {
-  const known = new Set(s.recurring.map((r) => norm(r.name)));
+  const known = new Set(s.recurring.map((r) => merchantKey(r.name)));
   const groups = new Map<string, Transaction[]>();
   for (const t of s.transactions) {
-    if (t.hidden || s.categories.find((c) => c.id === t.categoryId)?.groupId === 'g-transfer') continue;
-    const k = `${norm(t.merchant)}|${t.accountId}|${Math.sign(t.amountCents)}`;
+    const cat = s.categories.find((c) => c.id === t.categoryId);
+    if (t.hidden || cat?.groupId === 'g-transfer' || cat?.id === 'c-cash') continue;
+    const key = merchantKey(t.merchant);
+    if (!key) continue;
+    const k = `${key}|${t.accountId}|${Math.sign(t.amountCents)}`;
     groups.set(k, [...(groups.get(k) ?? []), t]);
   }
   const out: RecurringStream[] = [];
   for (const [k, ts] of groups) {
-    const name = ts[0].merchant;
-    if (known.has(norm(name))) continue;
-    const months = new Set(ts.map((t) => monthStart(t.date)));
-    if (ts.length < 3 || months.size < 3 || months.size !== ts.length) continue; // exige un cobro por mes
+    const key = k.split('|')[0];
+    if (known.has(key)) continue;
+    const idx = ts.map((t) => monthIdx(t.date)).sort((a, b) => a - b);
+    if (ts.length < 3 || new Set(idx).size !== ts.length) continue; // un cobro por mes
+    const gaps = idx.slice(1).map((v, i) => v - idx[i]);
+    if (gaps.some((g) => g > 2) || gaps.filter((g) => g === 1).length < gaps.length * 0.6) continue;
     const amounts = ts.map((t) => Math.abs(t.amountCents)).sort((a, b) => a - b);
     const med = amounts[Math.floor(amounts.length / 2)];
-    if (amounts.some((a) => Math.abs(a - med) > med * 0.15)) continue;
+    if (amounts.some((a) => Math.abs(a - med) > med * 0.2)) continue;
     const days = ts.map((t) => parse(t.date).d);
-    if (Math.max(...days) - Math.min(...days) > 5) continue;
+    if (Math.max(...days) - Math.min(...days) > 7) continue;
     const latest = ts.reduce((a, b) => (a.date > b.date ? a : b));
-    out.push({ id: `det-${k}`, name, amountCents: latest.amountCents, frequency: 'monthly', dayOfMonth: parse(latest.date).d, categoryId: latest.categoryId, accountId: latest.accountId, status: 'pending-approval' });
+    out.push({ id: `det-${k}`, name: prettyName(key), amountCents: latest.amountCents, frequency: 'monthly', dayOfMonth: parse(latest.date).d, categoryId: latest.categoryId, accountId: latest.accountId, status: 'pending-approval' });
   }
-  return out;
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 export { addDays };

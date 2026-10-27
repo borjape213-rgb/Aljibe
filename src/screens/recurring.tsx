@@ -5,7 +5,7 @@ import { occurrencesInMonth, detectRecurring } from '../logic/recurring.ts';
 import { addMonths, daysInMonth, formatDay, formatMonth, iso, monthStart, parse, todayISO, weekdayMon0 } from '../logic/dates.ts';
 import { Amount, Banner, Button, EmptyState, IconButton, Segmented, toast } from '../ui.tsx';
 import { TopBar } from './shell.tsx';
-import { approveDetected, setRecurringStatus } from '../actions.ts';
+import { approveAllDetected, approveDetected, setRecurringStatus } from '../actions.ts';
 
 const DOW = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 export function Recurring() {
@@ -30,7 +30,7 @@ export function Recurring() {
       <main>
         {pending.length ? (
           <section className="card" aria-label="Posibles recurrentes">
-            <div className="cardhead"><h2>Detectados: revisa {pending.length}</h2></div>
+            <div className="cardhead"><h2>Detectados: revisa {pending.length}</h2>{pending.length > 1 ? <Button variant="ghost" style={{ minHeight: 44 }} onClick={async () => { const keep = pending.filter((r) => s.recurring.some((x) => x.id === r.id)); for (const r of keep) await setRecurringStatus(r.id, 'active'); await approveAllDetected(pending.filter((r) => !keep.includes(r))); toast(`${pending.length} añadidos`); }}>Aprobar todos</Button> : null}</div>
             {pending.map((r) => (
               <div key={r.id} className="row" style={{ flexWrap: 'wrap' }}>
                 <span className="grow" style={{ minWidth: 140 }}><span className="title">{r.name}</span><span className="xs muted">Cada mes, día {r.dayOfMonth}</span></span>

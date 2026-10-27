@@ -2,6 +2,7 @@ import type { Account, Id, RecurringStream, Split, State, Transaction } from './
 import { getState, mutate, setState, freshSeed, emptyState } from './store.ts';
 import { applyRules, planImport, type ImportRow } from './logic/importer.ts';
 import { monthStart } from './logic/dates.ts';
+import { suggestCategories } from './logic/merchants.ts';
 
 const uid = (p: string) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
@@ -91,16 +92,43 @@ export async function approveDetected(r: RecurringStream): Promise<void> {
   mutate((s) => ({ ...s, recurring: [...s.recurring.filter((x) => x.id !== r.id), { ...r, id: uid('rc'), status: 'active' }] }));
 }
 
-export async function importRows(accountId: Id, rows: ImportRow[]): Promise<{ added: number; skipped: number }> {
+export async function importRows(accountId: Id, rows: ImportRow[], opts: { setBalanceCents?: number; holder?: string } = {}): Promise<{ added: number; skipped: number; categorized: number; balanceSet: boolean }> {
   const s = getState();
   const { fresh, skipped } = planImport(s, accountId, rows);
-  const news: Transaction[] = fresh.map(({ row, key }) => {
-    const r = applyRules(s.rules, { merchant: row.merchant, categoryId: 'c-none' });
-    return { id: uid('t'), accountId, date: row.date, amountCents: row.amountCents, merchant: r.merchant, categoryId: r.categoryId, notes: '', tags: [], hidden: false, needsReview: true, splits: [], externalId: key };
-  });
+  const holder = opts.holder ?? s.settings.holder;
+  const staged = fresh.map(({ row, key }) => ({ id: uid('t'), row, key, ruled: applyRules(s.rules, { merchant: row.merchant, categoryId: 'c-none' }) }));
+  const sugg = suggestCategories(s, staged.filter((x) => x.ruled.categoryId === 'c-none').map((x) => ({ id: x.id, merchant: x.ruled.merchant, amountCents: x.row.amountCents })), holder);
+  const news: Transaction[] = staged.map(({ id, row, key, ruled }) => ({ id, accountId, date: row.date, amountCents: row.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId !== 'c-none' ? ruled.categoryId : sugg.byId.get(id) ?? 'c-none', notes: '', tags: [], hidden: false, needsReview: true, splits: [], externalId: key }));
   const delta = news.reduce((n, t) => n + t.amountCents, 0);
-  mutate((st) => ({ ...st, transactions: [...news, ...st.transactions].sort(byDateDesc), accounts: st.accounts.map((a) => (a.id === accountId && a.group !== 'investments' ? { ...a, balanceCents: a.balanceCents + delta } : a)) }));
-  return { added: news.length, skipped };
+  const setBalance = opts.setBalanceCents;
+  mutate((st) => ({
+    ...st,
+    categories: [...st.categories, ...sugg.created.filter((c) => !st.categories.some((x) => x.id === c.id))],
+    settings: opts.holder ? { ...st.settings, holder: opts.holder } : st.settings,
+    transactions: [...news, ...st.transactions].sort(byDateDesc),
+    accounts: st.accounts.map((a) => (a.id === accountId && a.group !== 'investments' ? { ...a, balanceCents: setBalance !== undefined ? setBalance : a.balanceCents + delta, updatedAt: setBalance !== undefined ? new Date().toISOString().slice(0, 19) : a.updatedAt } : a)),
+  }));
+  return { added: news.length, skipped, categorized: news.filter((t) => t.categoryId !== 'c-none').length, balanceSet: setBalance !== undefined };
+}
+
+/** Pone categoría a los movimientos "Sin categoría": primero tus reglas, luego lo que ya categorizaste tú y por último el diccionario de comercios. */
+export async function categorizeUncategorized(): Promise<{ assigned: number; remaining: number }> {
+  const s = getState();
+  const todo = s.transactions.filter((t) => t.categoryId === 'c-none' && !t.hidden && !t.splits.length);
+  const byId = new Map<Id, Id>();
+  const rest: Transaction[] = [];
+  for (const t of todo) { const r = applyRules(s.rules, { merchant: t.merchant, categoryId: 'c-none' }); if (r.categoryId !== 'c-none') byId.set(t.id, r.categoryId); else rest.push(t); }
+  const sugg = suggestCategories(s, rest.map((t) => ({ id: t.id, merchant: t.merchant, amountCents: t.amountCents })));
+  sugg.byId.forEach((c, id) => byId.set(id, c));
+  mutate((st) => ({
+    ...st,
+    categories: [...st.categories, ...sugg.created.filter((c) => !st.categories.some((x) => x.id === c.id))],
+    transactions: st.transactions.map((t) => (byId.has(t.id) ? { ...t, categoryId: byId.get(t.id)! } : t)),
+  }));
+  return { assigned: byId.size, remaining: todo.length - byId.size };
+}
+export async function approveAllDetected(list: RecurringStream[]): Promise<void> {
+  mutate((s) => ({ ...s, recurring: [...s.recurring.filter((x) => !list.some((r) => r.id === x.id)), ...list.map((r) => ({ ...r, id: uid('rc'), status: 'active' as const }))] }));
 }
 
 export async function updateSettings(patch: Partial<State['settings']>) { mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } })); }

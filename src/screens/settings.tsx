@@ -5,8 +5,8 @@ import { parseXLSX } from '../logic/xlsx.ts';
 import { isOLE, parseXLS } from '../logic/xls.ts';
 import type { Route } from '../router.tsx';
 import { useData } from '../store.ts';
-import { findHeader, parseCSV, planImport, rowsFromCSV, type ImportRow } from '../logic/importer.ts';
-import { Banner, Button, EmptyState, Field, IconButton, Segmented, Sheet, toast } from '../ui.tsx';
+import { findHeader, parseCSV, planImport, rowsFromCSV, statementInfo, type ImportRow, type StatementInfo } from '../logic/importer.ts';
+import { Banner, Button, EmptyState, Field, IconButton, Segmented, Sheet, money, toast } from '../ui.tsx';
 import { TopBar } from './shell.tsx';
 import { CategoryPicker } from './common.tsx';
 import { addRule, addTag, clearAll, markBackup, moveItem, deleteCategory, exportJSON, importJSON, importRows, removeRule, removeTag, resetSeed, saveCategory, updateSettings, ValidationError } from '../actions.ts';
@@ -97,7 +97,8 @@ function DataScreen() {
   const s = useData();
   const file = useRef<HTMLInputElement>(null);
   const jfile = useRef<HTMLInputElement>(null);
-  const [csv, setCsv] = useState<{ rows: ImportRow[]; bad: { line: number; reason: string }[]; error?: string } | null>(null);
+  const [csv, setCsv] = useState<{ rows: ImportRow[]; bad: { line: number; reason: string }[]; info?: StatementInfo; error?: string } | null>(null);
+  const [adjust, setAdjust] = useState<boolean | null>(null);
   const [acc, setAcc] = useState(s.accounts.find((a) => a.group === 'cash' || a.group === 'credit')?.id ?? '');
   const [confirm, setConfirm] = useState<null | 'clear' | 'seed'>(null);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
@@ -114,9 +115,19 @@ function DataScreen() {
     catch (x) { return setCsv({ rows: [], bad: [], error: x instanceof Error ? x.message : 'No se ha podido leer el archivo.' }); }
     const head = findHeader(rows);
     if (!head) return setCsv({ rows: [], bad: [], error: 'No encuentro las columnas. Necesito una fila con fecha, concepto e importe (o débito y crédito).' });
-    { const r = rowsFromCSV(rows, head.map, head.index); setCsv({ rows: r.ok, bad: r.bad }); }
+    { const r = rowsFromCSV(rows, head.map, head.index); setAdjust(null); setCsv({ rows: r.ok, bad: r.bad, info: statementInfo(rows, head.index, head.map) }); }
   };
   const plan = csv && acc ? planImport(s, acc, csv.rows) : null;
+  // Saldo del extracto frente al saldo que tendría la cuenta tras importar
+  const accObj = s.accounts.find((a) => a.id === acc);
+  const target = csv?.info?.balanceCents;
+  const canAdjust = !!accObj && accObj.group === 'cash' && target !== undefined;
+  const expected = (accObj?.balanceCents ?? 0) + (plan ? plan.fresh.reduce((n, f) => n + f.row.amountCents, 0) : 0);
+  const differs = canAdjust && target !== expected;
+  const newestFile = csv ? csv.rows.reduce((m, r) => (r.date > m ? r.date : m), '') : '';
+  const newestAcc = s.transactions.filter((t) => t.accountId === acc).reduce((m, t) => (t.date > m ? t.date : m), '');
+  const isLatest = newestFile >= newestAcc;
+  const doAdjust = differs && (adjust ?? isLatest);
   const download = (name: string, text: string, type: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); void markBackup(); };
   return (
     <>
@@ -133,7 +144,13 @@ function DataScreen() {
           {csv && !csv.error && plan ? (
             <>
               <Banner tone={plan.fresh.length ? 'info' : 'warn'}>{plan.fresh.length} nuevas, {plan.skipped} ya existían{csv.bad.length ? `, ${csv.bad.length} filas con problemas (${csv.bad.slice(0, 3).map((b) => `línea ${b.line}: ${b.reason}`).join('; ')}${csv.bad.length > 3 ? '…' : ''})` : ''}.</Banner>
-              <Button disabled={!plan.fresh.length} onClick={async () => { const r = await importRows(acc, csv.rows); setCsv(null); setMsg({ tone: 'ok', text: `Importadas ${r.added} transacciones. Se han marcado por revisar.` }); }}>Importar {plan.fresh.length}</Button>
+              {differs ? (
+                <>
+                  <Banner tone="warn">El archivo indica un saldo de <b>{money(target!)}</b>, pero la cuenta quedaría en <b>{money(expected)}</b>.{isLatest ? '' : ' El archivo acaba antes que tus últimos movimientos, así que no lo ajusto por defecto.'}</Banner>
+                  <label style={{ display: 'flex', gap: 12, alignItems: 'center', minHeight: 48 }}><input type="checkbox" style={{ width: 22, height: 22 }} checked={doAdjust} onChange={(e) => setAdjust(e.target.checked)} />Ajustar el saldo de la cuenta a {money(target!)}</label>
+                </>
+              ) : null}
+              <Button disabled={!plan.fresh.length && !doAdjust} onClick={async () => { const r = await importRows(acc, csv.rows, { setBalanceCents: doAdjust ? target : undefined, holder: csv.info?.holder }); setCsv(null); setMsg({ tone: 'ok', text: `${r.added ? `Importadas ${r.added} transacciones (${r.categorized} con categoría automática, ${r.added - r.categorized} sin categoría)` : 'No había transacciones nuevas'}${r.balanceSet ? '; saldo de la cuenta ajustado' : ''}. Lo importado queda por revisar.` }); }}>{plan.fresh.length ? `Importar ${plan.fresh.length}` : 'Ajustar saldo'}</Button>
             </>
           ) : null}
         </section>

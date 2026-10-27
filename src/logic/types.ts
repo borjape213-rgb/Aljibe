@@ -119,6 +119,8 @@ export interface Settings {
   navItems: string[];
   lastBackupAt?: string;
   createdAt?: string;
+  /** Titular de la cuenta, leído del extracto: sirve para reconocer traspasos entre tus propias cuentas. */
+  holder?: string;
   dashboardWidgets: { id: string; visible: boolean }[];
 }
 
