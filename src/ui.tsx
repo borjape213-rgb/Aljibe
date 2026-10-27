@@ -112,7 +112,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   closeRef.current = onClose;
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
+    // foco al diálogo solo si ningún campo (autoFocus) lo ha cogido ya
+    if (ref.current && !ref.current.contains(document.activeElement)) ref.current.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeRef.current();
       if (e.key === 'Tab' && ref.current) {
