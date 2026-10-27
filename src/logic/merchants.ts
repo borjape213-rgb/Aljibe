@@ -70,6 +70,7 @@ interface Spec { id: Id; name: string; groupId: Id }
 const SPEC = {
   salary: { id: 'c-salary', name: 'Nómina', groupId: 'g-income' },
   otherinc: { id: 'c-otherinc', name: 'Otros ingresos', groupId: 'g-income' },
+  rent: { id: 'c-rent', name: 'Alquiler', groupId: 'g-home' },
   utilities: { id: 'c-utilities', name: 'Luz y agua', groupId: 'g-home' },
   internet: { id: 'c-internet', name: 'Internet y móvil', groupId: 'g-bills' },
   subs: { id: 'c-subs', name: 'Suscripciones', groupId: 'g-bills' },
@@ -95,25 +96,26 @@ type SpecKey = keyof typeof SPEC;
 /** Orden importa: lo más concreto primero (amazon prime antes que amazon). */
 const DICTIONARY: [RegExp, SpecKey][] = [
   [/\b(nomina|salario|payroll)\b/, 'salary'],
-  [/\b(mintos|degiro|trade republic|myinvestor|indexa|interactive brokers|bitstamp|coinbase|binance|kraken|traspaso)\b/, 'transfer'],
-  [/\b(spotify|netflix|hbo|disney|prime video|primevideo|amazon prime|youtube|icloud|apple com bill|google one|dropbox|openai|chatgpt|patreon|twitch|crunchyroll|filmin|dazn|audible|adobe|microsoft 365|notion|github)\b/, 'subs'],
-  [/\b(simyo|movistar|vodafone|orange|masmovil|yoigo|digi|pepephone|jazztel|telefonica|lowi|o2|finetwork|lycamobile)\b/, 'internet'],
-  [/\b(iberdrola|endesa|naturgy|holaluz|emasa|emasesa|aguas|agua|gas natural|viesgo|som energia|luz)\b/, 'utilities'],
-  [/\b(mercadona|lidl|carrefour|dia|aldi|alcampo|eroski|supercor|hipercor|consum|coviran|ahorramas|supermercado|supersol|el arbol)\b/, 'groceries'],
-  [/\b(repsol|cepsa|texaco|shell|bp|galp|petroprix|gasolinera|eess|e s|estacion de servicio|petronor|ballenoil|plenergy|avia)\b/, 'fuel'],
-  [/\b(feu vert|taller|autoescuela|neumaticos|itv|aparcamiento|parking|parkinglibre|autolavado|midas|norauto|recambios|dgt)\b/, 'car'],
-  [/\b(renfe|metro|tussam|emt|taxi|uber|cabify|bolt|alsa|avanza|ouigo|iryo|blablacar|autobuses|consorcio)\b/, 'transit'],
+  [/\b(traspaso propio|traspaso|retirada inversion|mintos|degiro|trade republic|myinvestor|indexa|interactive brokers|bitstamp|coinbase|binance|kraken)\b/, 'transfer'],
+  [/\b(reintegro|cajero|disposicion)\b/, 'cash'],
+  [/\b(spotify|netflix|hbo|disney|prime video|primevideo|amazon prime|youtube|icloud|apple com bill|google one|google youtube|dropbox|openai|chatgpt|anthropic|claude ai|patreon|twitch|crunchyroll|filmin|dazn|audible|adobe|microsoft 365|notion|github)\b/, 'subs'],
+  [/\b(simyo|movistar|vodafone|orange|masorange|mas orange|masmovil|yoigo|digi|pepephone|jazztel|lowi|o2|finetwork|lycamobile|adamo)\b|\btelefon\w*/, 'internet'],
+  [/\balquiler(?! de (coche|vehiculo|moto|furgoneta|bici|apartamento turistico))\b|\b(hipoteca|cuota hipoteca|comunidad de propietarios|comunidad propietarios|comunidad de vecinos|cdad propietarios)\b/, 'rent'],
+  [/\b(iberdrola|endesa|naturgy|holaluz|emasa|emasesa|aguas|agua|gas natural|gas|viesgo|som energia|octopus|totalenergies|repsol luz|canal isabel|luz)\b/, 'utilities'],
+  [/\b(mercadona|lidl|carrefour|dia|aldi|alcampo|eroski|supercor|hipercor|consum|coviran|ahorramas|supermercado|supersol|el arbol|hsn|gadis|condis|caprabo|bonpreu|froiz|mas y mas|family cash|fruteria|pescaderia|autoservicio|ultramarinos)\b|\bcarnicer\w*/, 'groceries'],
+  [/\b(repsol|cepsa|moeve|texaco|shell|bp|galp|petroprix|gasolinera|eess|e s|estacion de servicio|petronor|ballenoil|plenergy|avia)\b|\bgasolin\w*/, 'fuel'],
+  [/\b(feu vert|taller|autoescuela|neumaticos|itv|aparcamiento|parking|parkinglibre|easypark|peaje|autolavado|midas|norauto|recambios)\b/, 'car'],
+  [/\b(renfe|metro|metro de sevilla|tussam|emt|taxi|uber|cabify|bolt|alsa|avanza|ouigo|iryo|blablacar|autobuses|autobus|bus|consorcio)\b/, 'transit'],
   [/\b(booking|airbnb|ryanair|vueling|easyjet|iberia express|iberia airlines|hotel|hostal|apartamentos|trainline|trivago|despegar|volotea|buceo|diving|dive)\b/, 'travel'],
-  [/\b(gym|gimnasio|fitness|upgyms|basic fit|crossfit|padel|piscina|polideportivo|decathlon)\b/, 'gym'],
+  [/\b(gym|gimnasio|fitness|upgyms|basic fit|crossfit|padel|piscina|polideportivo)\b/, 'gym'],
   [/\b(academia|universidad|curso|colegio|formacion|udemy|coursera|flight training|fp espana|altiance|escuela|libreria)\b/, 'edu'],
-  [/\b(farmacia|parafarmacia|clinica|centro medico|dentista|optica|hospital|sanitas|adeslas|fisio|fisioterapia|podologo|psicologo)\b/, 'pharmacy'],
+  [/\bfarmac\w*|\bmedic\w*|\b(parafarmacia|clinica|dental|dentix|dentista|optica|hospital|sanitas|adeslas|asisa|fisio|fisioterapia|podologo|psicologo)\b/, 'pharmacy'],
   [/\b(poliza|seguro|seguros|mapfre|mutua|axa|linea directa|allianz|generali|reale|ocaso|pelayo)\b/, 'insurance'],
-  [/\b(tributos|agencia tributaria|hacienda|aeat|ayuntamiento|ibi|impuesto|tasa|tasas)\b/, 'taxes'],
+  [/\b(tributos|agencia tributaria|hacienda|aeat|ayuntamiento|ibi|impuesto|tasa|tasas|dgt|lipasam|suma|seguridad social)\b/, 'taxes'],
   [/\b(peluqueria|peluqueros|peluquero|barberia|barber|estetica|manicura|spa|masaje)\b/, 'care'],
-  [/\b(cine|cinesur|cinema|teatro|entradas|ticketmaster|steam|playstation|nintendo|instant gaming|gamivo|eneba|xbox|epic games|discoteca|concierto|museo|bolera|escape room|feria)\b/, 'fun'],
-  [/\b(amazon|aliexpress|zara|ikea|el corte ingles|pull bear|primark|mediamarkt|pccomponentes|leroy merlin|bricomart|ferreteria|shein|temu|calzedonia|h m|mango|fnac|worten|zalando|bazar|tienda|casa del libro|ebay|wallapop)\b/, 'shopping'],
-  [/\b(restaurante|bar|cafe|cafeteria|cafeteria|pizza|pizzeria|telepizza|burger|burguer|mc ?donald'?s?|kfc|hamburgueseria|heladeria|taberna|asador|arroceria|tapas|tapeo|panaderia|pasteleria|sushi|kebab|foster'?s hollywood|vips|glovo|just eat|uber eats|vending|vendin|kiosko|bocadillo|cerveceria|chiringuito|desayuno|almuerzo|cena|comida|cerveza|copas|menu|tostada|brasa|carniceria|gourmet|beach|pizzas)\b/, 'eating'],
-  [/\b(peluqueria)\b/, 'care'],
+  [/\b(cine|cinesur|cinesa|yelmo|kinepolis|ocine|cinema|teatro|entrada|entradas|ticket|tickets|ticketmaster|steam|playstation|nintendo|instant gaming|gamivo|eneba|xbox|epic games|discoteca|concierto|museo|bolera|escape room|feria)\b/, 'fun'],
+  [/\b(amazon|aliexpress|zara|ikea|el corte ingles|pull bear|pull and bear|bershka|decathlon|primark|mediamarkt|pccomponentes|leroy merlin|bricomart|ferreteria|shein|temu|calzedonia|h m|mango|fnac|worten|zalando|bazar|tienda|estanco|casa del libro|ebay|wallapop)\b/, 'shopping'],
+  [/\brestaur\w*|\bpizz\w*|\b(bar|cafe|cafeteria|telepizza|burger|burguer|mc ?donald'?s?|kfc|hamburgueseria|heladeria|taberna|asador|arroceria|tapas|tapeo|panaderia|pasteleria|sushi|kebab|foster'?s hollywood|vips|glovo|just eat|uber eats|vending|vendin|kiosko|bocadillo|cerveceria|chiringuito|desayuno|almuerzo|cena|comida|cerveza|copas|menu|tostada|brasa|gourmet|beach)\b/, 'eating'],
 ];
 
 const SELF_WORDS = new Set(['de', 'la', 'del', 'los', 'las', 'y', 'el']);
@@ -150,18 +152,18 @@ export function dictionaryCategory(raw: string, amountCents: number, holder?: st
 export interface CatInput { id: Id; merchant: string; amountCents: number }
 
 /**
- * Sugiere categoría para cada movimiento: primero lo que ya has categorizado tú con el mismo comercio,
+ * Sugiere categoría para cada movimiento: primero lo último que has categorizado tú con el mismo comercio,
  * después el diccionario de comercios. Devuelve las asignaciones y las categorías nuevas que haría falta crear.
  */
 export function suggestCategories(s: State, items: CatInput[], holder: string | undefined = s.settings.holder): { byId: Map<Id, Id>; created: Category[] } {
   const existing = new Set(s.categories.map((c) => c.id));
-  const learned = new Map<string, Map<Id, number>>();
+  // Lo que has elegido tú manda: para cada comercio (y signo), la categoría de su movimiento más reciente.
+  const learned = new Map<string, { date: string; cat: Id }>();
   for (const t of s.transactions) {
     if (t.categoryId === 'c-none' || !existing.has(t.categoryId)) continue;
     const k = `${Math.sign(t.amountCents)}|${merchantKey(t.merchant)}`;
-    const m = learned.get(k) ?? new Map<Id, number>();
-    m.set(t.categoryId, (m.get(t.categoryId) ?? 0) + 1);
-    learned.set(k, m);
+    const cur = learned.get(k);
+    if (!cur || t.date > cur.date) learned.set(k, { date: t.date, cat: t.categoryId });
   }
   const created = new Map<Id, Category>();
   const resolve = (key: SpecKey): Id => {
@@ -174,12 +176,8 @@ export function suggestCategories(s: State, items: CatInput[], holder: string | 
   };
   const byId = new Map<Id, Id>();
   for (const it of items) {
-    const m = learned.get(`${Math.sign(it.amountCents)}|${merchantKey(it.merchant)}`);
-    if (m) {
-      const total = [...m.values()].reduce((a, b) => a + b, 0);
-      const [cat, n] = [...m.entries()].sort((a, b) => b[1] - a[1])[0];
-      if (n / total >= 0.6) { byId.set(it.id, cat); continue; }
-    }
+    const mine = learned.get(`${Math.sign(it.amountCents)}|${merchantKey(it.merchant)}`);
+    if (mine) { byId.set(it.id, mine.cat); continue; }
     const k = dictionaryCategory(it.merchant, it.amountCents, holder);
     if (k) byId.set(it.id, resolve(k));
   }

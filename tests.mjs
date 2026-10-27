@@ -141,3 +141,39 @@ assert.equal(spotDet.length, 1); assert.equal(spotDet[0].name, 'Spotify'); asser
 cs.transactions = [mk('2026-08-03', 'Compra Mercadona', -1000), mk('2026-08-10', 'Compra Mercadona', -1000), mk('2026-08-17', 'Compra Mercadona', -1000)];
 assert.equal(detectRecurring(cs).length, 0);
 console.log('saldo del extracto, categorías automáticas y recurrentes ok');
+
+// ---- reglas de categorías (palabras enteras, lo último que eliges manda) ----
+{
+  const ds = buildSeed(); ds.transactions = []; ds.recurring = [];
+  const cat = (m, c = -1000) => suggestCategories(ds, [{ id: 'z', merchant: m, amountCents: c }], 'PEREZ DE LA IGLESIA ANA').byId.get('z');
+  assert.equal(cat('Compra Dia Sevilla'), 'c-groceries');
+  assert.equal(cat('Compra Bar El Rincon'), 'c-eating');
+  assert.equal(cat('Compra Barcelona Viajes Sl'), undefined);       // "bar" no es "Barcelona"
+  assert.equal(cat('Compra Media Markt Sevilla') === 'c-groceries', false);  // "dia" no es "media"
+  assert.equal(cat('Recibo Gas Natural'), 'c-utilities');
+  assert.equal(cat('Compra Gasolinera Repsol'), 'c-fuel');
+  assert.equal(cat('Billete Bus Sevilla'), 'c-transit');
+  assert.equal(cat('Compra Restaurante La Plaza'), 'c-eating');
+  assert.equal(cat('Compra Pizzeria Roma'), 'c-eating');
+  assert.equal(cat('Recibo Alquiler Octubre'), 'c-rent');
+  assert.notEqual(cat('Alquiler de coche Sixt'), 'c-rent');
+  assert.equal(cat('Compra Carnicer a Retinta'), 'c-groceries');
+  assert.equal(cat('Recibo Anthropic'), 'c-subs');
+  assert.equal(cat('Compra Apple Store iPhone'), undefined);          // "apple" suelto no es suscripción
+  assert.equal(cat('Compra Decathlon'), 'c-shopping');
+  assert.equal(cat('Compra Yelmo Cines'), 'c-fun');
+  assert.equal(cat('Peaje AP-4'), 'c-car');
+  assert.equal(cat('Recibo DGT'), 'c-taxes');
+  assert.equal(cat('Traspaso propio a ahorro'), 'c-transfer');
+  assert.equal(cat('Retirada inversion Mintos'), 'c-transfer');
+  assert.equal(cat('Reintegro cajero Sevilla'), 'c-cash');
+  // Bizum con concepto → por el concepto; recibido sin concepto → otros ingresos; enviado sin concepto → sin categoría
+  assert.equal(cat('Bizum De Pepe Concepto Cena', 1000), 'c-eating');
+  assert.equal(cat('Bizum De Pepe', 1000), 'c-otherinc');
+  assert.equal(cat('Bizum A Favor De Pepe', -1000), undefined);
+  // lo último que has elegido para un comercio manda sobre el diccionario
+  const t = (id, date, cat) => ({ id, accountId: 'a-check', date, amountCents: -1000, merchant: 'Compra Mercadona', categoryId: cat, notes: '', tags: [], hidden: false, needsReview: false, splits: [] });
+  ds.transactions = [t('1', '2026-05-01', 'c-groceries'), t('2', '2026-06-01', 'c-groceries'), t('3', '2026-07-01', 'c-shopping')];
+  assert.equal(cat('Compra Mercadona'), 'c-shopping');
+}
+console.log('reglas de categorías ok');
