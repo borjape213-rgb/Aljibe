@@ -16,6 +16,7 @@ npm run build                      # genera dist/
 npm test                           # lógica de dinero, presupuesto, importación y Excel
 python3 -m http.server -d dist 8765
 python3 e2e.py                     # pruebas de uso con Playwright (el servidor debe estar en marcha)
+python3 e2e_data.py                # seguridad de los datos: arranque con fallos, restaurar copias, importes con símbolo
 ```
 
 ## Publicar en GitHub Pages

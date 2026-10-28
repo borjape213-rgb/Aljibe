@@ -62,3 +62,32 @@ export function parseCents(input: string): number | null {
   if (!Number.isSafeInteger(cents)) return null;
   return sign * cents;
 }
+
+const CUR = '(?:€|\\$|£|¥|eur(?:os?)?|usd|gbp|chf)';
+const CUR_LEAD = new RegExp(`^${CUR}`, 'i');
+const CUR_TRAIL = new RegExp(`${CUR}$`, 'i');
+
+/**
+ * Como `parseCents`, pero para importes tal como los escribe un banco en un extracto:
+ * admite símbolo o código de moneda delante o detrás ("45,20 €", "EUR 45,20", "$ 12"),
+ * negativo entre paréntesis ("(45,20)") y signo al final ("45,20-"). Devuelve null si el
+ * texto no es un importe o si el signo es ambiguo ("(-45,20)", "-45,20-").
+ */
+export function parseAmount(input: string): number | null {
+  let s = input.replace(/\s/g, '').replace(/−/g, '-');
+  let minus = 0, plus = 0;
+  for (let changed = true; changed && s !== ''; ) {
+    changed = false;
+    const lead = CUR_LEAD.exec(s);
+    if (lead) { s = s.slice(lead[0].length); changed = true; }
+    const trail = CUR_TRAIL.exec(s);
+    if (trail && s.length > trail[0].length) { s = s.slice(0, -trail[0].length); changed = true; }
+    if (s.length > 2 && s.startsWith('(') && s.endsWith(')')) { s = s.slice(1, -1); minus++; changed = true; }
+    if (s[0] === '-' || s[0] === '+') { if (s[0] === '-') minus++; else plus++; s = s.slice(1); changed = true; }
+    if (s.length && (s.at(-1) === '-' || s.at(-1) === '+')) { if (s.at(-1) === '-') minus++; else plus++; s = s.slice(0, -1); changed = true; }
+  }
+  if (minus + plus > 1) return null;
+  const v = parseCents(s);
+  if (v === null) return null;
+  return minus ? -Math.abs(v) : Math.abs(v);
+}

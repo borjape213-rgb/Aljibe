@@ -1,5 +1,6 @@
 import type { Account, Id, RecurringStream, Split, State, Transaction } from './logic/types.ts';
-import { getState, mutate, setState, freshSeed, emptyState, dropLegacyReview } from './store.ts';
+import { getState, mutate, setState, freshSeed, emptyState, dropLegacyReview, savePreviousCopy, loadPreviousCopy } from './store.ts';
+import { countsOf, normalizeState } from './logic/state.ts';
 import { applyRules, planImport, type ImportRow } from './logic/importer.ts';
 import { monthStart } from './logic/dates.ts';
 import { sameMerchantUncategorized, suggestCategories } from './logic/merchants.ts';
@@ -151,7 +152,17 @@ export async function saveCategory(c: { id?: Id; groupId: Id; name: string }) {
   mutate((s) => ({ ...s, categories: c.id ? s.categories.map((x) => (x.id === c.id ? { ...x, name: c.name.trim(), groupId: c.groupId } : x)) : [...s.categories, { id: uid('c'), groupId: c.groupId, name: c.name.trim(), icon: 'tag' }] }));
 }
 export async function deleteCategory(id: Id) {
-  mutate((s) => ({ ...s, categories: s.categories.filter((c) => c.id !== id), transactions: s.transactions.map((t) => ({ ...t, categoryId: t.categoryId === id ? 'c-none' : t.categoryId, splits: t.splits.map((p) => ({ ...p, categoryId: p.categoryId === id ? 'c-none' : p.categoryId })) })), budgetItems: s.budgetItems.filter((b) => b.categoryId !== id) }));
+  mutate((s) => ({
+    ...s,
+    categories: s.categories.filter((c) => c.id !== id),
+    transactions: s.transactions.map((t) => ({ ...t, categoryId: t.categoryId === id ? 'c-none' : t.categoryId, splits: t.splits.map((p) => ({ ...p, categoryId: p.categoryId === id ? 'c-none' : p.categoryId })) })),
+    budgetItems: s.budgetItems.filter((b) => b.categoryId !== id),
+    rollovers: s.rollovers.filter((r) => r.categoryId !== id),
+    // los recurrentes pasan a "Sin categoría", como los movimientos
+    recurring: s.recurring.map((r) => (r.categoryId === id ? { ...r, categoryId: 'c-none' } : r)),
+    // una regla que ponía esta categoría ya no puede ponerla: se queda con lo que más haga (renombrar) o se borra
+    rules: s.rules.flatMap((r) => (r.setCategoryId !== id ? [r] : r.renameTo ? [{ ...r, setCategoryId: undefined }] : [])),
+  }));
 }
 export async function addTag(name: string) { if (!name.trim()) throw new ValidationError('Escribe un nombre.'); mutate((s) => ({ ...s, tags: [...s.tags, { id: uid('tg'), name: name.trim() }] })); }
 export async function removeTag(id: Id) { mutate((s) => ({ ...s, tags: s.tags.filter((t) => t.id !== id), transactions: s.transactions.map((t) => ({ ...t, tags: t.tags.filter((x) => x !== id) })) })); }
@@ -167,15 +178,28 @@ export async function moveItem(kind: 'widgets' | 'nav', index: number, delta: -1
     return { ...s, settings: kind === 'widgets' ? { ...s.settings, dashboardWidgets: list as State['settings']['dashboardWidgets'] } : { ...s.settings, navItems: list as string[] } };
   });
 }
-export async function importJSON(text: string): Promise<void> {
+export interface ParsedBackup { state: State; accounts: number; transactions: number }
+/** Lee y valida un archivo de copia de seguridad SIN tocar los datos actuales. */
+export function parseBackup(text: string): ParsedBackup {
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { throw new ValidationError('El archivo no es una copia de seguridad válida.'); }
-  const p = parsed as State;
-  if (!p || p.version !== 1 || !Array.isArray(p.accounts) || !Array.isArray(p.transactions) || !Array.isArray(p.categories)) throw new ValidationError('El archivo no es una copia de seguridad válida.');
-  setState(dropLegacyReview(p));
+  const n = normalizeState(parsed);
+  if (!n.ok) throw new ValidationError(n.error.startsWith('El archivo') ? n.error : `No se puede restaurar: ${n.error}`);
+  return { state: n.state, ...countsOf(n.state) };
 }
-export async function resetSeed() { setState(freshSeed()); }
-export async function clearAll() { setState(emptyState(getState().settings)); }
+
+/** Sustituye todos los datos. Antes guarda una copia de lo que hay; si no puede, no cambia nada. */
+export async function replaceAllData(next: State): Promise<void> {
+  try { await savePreviousCopy(); } catch { throw new ValidationError('No he podido guardar una copia de lo que tienes ahora, así que no he cambiado nada. Descarga una copia de seguridad y vuelve a intentarlo.'); }
+  setState(dropLegacyReview(next));
+}
+export async function restorePreviousCopy(): Promise<void> {
+  const prev = await loadPreviousCopy();
+  if (!prev) throw new ValidationError('No hay ninguna copia anterior que recuperar.');
+  await replaceAllData(prev.state);
+}
+export async function resetSeed() { await replaceAllData(freshSeed()); }
+export async function clearAll() { await replaceAllData(emptyState(getState().settings)); }
 
 export async function copyBudget(fromMonth: string, toMonth: string): Promise<number> {
   const src = getState().budgetItems.filter((b) => b.month === fromMonth);

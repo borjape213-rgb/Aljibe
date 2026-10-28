@@ -1,15 +1,15 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LuChevronRight, LuTrash2, LuPlus, LuDownload, LuUpload, LuArrowUp, LuArrowDown } from 'react-icons/lu';
 import { BAR_SLOTS, DESTS, WIDGET_NAMES, navOrder, widgetOrder } from '../nav.ts';
 import { parseXLSX } from '../logic/xlsx.ts';
 import { isOLE, parseXLS } from '../logic/xls.ts';
 import type { Route } from '../router.tsx';
-import { useData } from '../store.ts';
+import { discardPreviousCopy, loadPreviousCopy, useData, type PreviousCopy } from '../store.ts';
 import { findHeader, parseCSV, planImport, rowsFromCSV, statementInfo, type ImportRow, type StatementInfo } from '../logic/importer.ts';
 import { Banner, Button, EmptyState, Field, IconButton, Segmented, Sheet, money, toast } from '../ui.tsx';
 import { TopBar } from './shell.tsx';
 import { CategoryPicker } from './common.tsx';
-import { addRule, addTag, clearAll, markBackup, moveItem, deleteCategory, exportJSON, importJSON, importRows, removeRule, removeTag, resetSeed, saveCategory, updateSettings, ValidationError } from '../actions.ts';
+import { addRule, addTag, clearAll, markBackup, moveItem, deleteCategory, exportJSON, importRows, parseBackup, removeRule, removeTag, replaceAllData, resetSeed, restorePreviousCopy, saveCategory, updateSettings, ValidationError, type ParsedBackup } from '../actions.ts';
 import { todayISO } from '../logic/dates.ts';
 
 export function Settings({ route }: { route: Route }) {
@@ -102,6 +102,16 @@ function DataScreen() {
   const [acc, setAcc] = useState(s.accounts.find((a) => a.group === 'cash' || a.group === 'credit')?.id ?? '');
   const [confirm, setConfirm] = useState<null | 'clear' | 'seed'>(null);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+  const [restore, setRestore] = useState<ParsedBackup | null>(null);
+  const [prev, setPrev] = useState<PreviousCopy | null>(null);
+  const [discard, setDiscard] = useState(false);
+  useEffect(() => { let on = true; void loadPreviousCopy().then((p) => { if (on) setPrev(p); }); return () => { on = false; }; }, [msg]);
+  const onBackup = async (f: File | undefined) => {
+    if (!f) return;
+    if (f.size > 25_000_000) return setMsg({ tone: 'bad', text: 'El archivo pesa más de 25 MB; no parece una copia de Aljibe.' });
+    try { setRestore(parseBackup(await f.text())); setMsg(null); }
+    catch (x) { setMsg({ tone: 'bad', text: x instanceof ValidationError ? x.message : 'No se ha podido leer el archivo.' }); }
+  };
   const onCsv = async (f: File | undefined) => {
     if (!f) return;
     if (f.size > 5_000_000) return setCsv({ rows: [], bad: [], error: 'El archivo pesa más de 5 MB.' });
@@ -127,8 +137,9 @@ function DataScreen() {
   const newestFile = csv ? csv.rows.reduce((m, r) => (r.date > m ? r.date : m), '') : '';
   const newestAcc = s.transactions.filter((t) => t.accountId === acc).reduce((m, t) => (t.date > m ? t.date : m), '');
   const isLatest = newestFile >= newestAcc;
-  const doAdjust = differs && (adjust ?? isLatest);
-  const download = (name: string, text: string, type: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); void markBackup(); };
+  // por defecto NO se toca el saldo: lo decide el usuario (el saldo del extracto es una lectura aproximada del archivo)
+  const doAdjust = differs && (adjust ?? false);
+  const download = (name: string, text: string, type: string, isBackup = true) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); if (isBackup) void markBackup(); };
   return (
     <>
       <TopBar title="Datos y copia" back="/settings" />
@@ -146,7 +157,7 @@ function DataScreen() {
               <Banner tone={plan.fresh.length ? 'info' : 'warn'}>{plan.fresh.length} nuevas, {plan.skipped} ya existían{csv.bad.length ? `, ${csv.bad.length} filas con problemas (${csv.bad.slice(0, 3).map((b) => `línea ${b.line}: ${b.reason}`).join('; ')}${csv.bad.length > 3 ? '…' : ''})` : ''}.</Banner>
               {differs ? (
                 <>
-                  <Banner tone="warn">El archivo indica un saldo de <b>{money(target!)}</b>, pero la cuenta quedaría en <b>{money(expected)}</b>.{isLatest ? '' : ' El archivo acaba antes que tus últimos movimientos, así que no lo ajusto por defecto.'}</Banner>
+                  <Banner tone="warn">El archivo indica un saldo de <b>{money(target!)}</b>, pero la cuenta quedaría en <b>{money(expected)}</b>.{isLatest ? ' Si es el extracto más reciente y el saldo del archivo es correcto, marca la casilla para ajustar la cuenta.' : ' El archivo acaba antes que tus últimos movimientos, así que probablemente no debas ajustar el saldo.'}</Banner>
                   <label style={{ display: 'flex', gap: 12, alignItems: 'center', minHeight: 48 }}><input type="checkbox" style={{ width: 22, height: 22 }} checked={doAdjust} onChange={(e) => setAdjust(e.target.checked)} />Ajustar el saldo de la cuenta a {money(target!)}</label>
                 </>
               ) : null}
@@ -158,9 +169,19 @@ function DataScreen() {
           <h2>Copia de seguridad</h2>
           <p className="hint">Un archivo JSON con todos tus datos. Guárdalo fuera del teléfono. {s.settings.lastBackupAt ? `Última copia: ${new Date(s.settings.lastBackupAt).toLocaleDateString('es-ES')}.` : 'Aún no has descargado ninguna.'}</p>
           <Button variant="secondary" onClick={() => download(`aljibe-${todayISO()}.json`, exportJSON(), 'application/json')}><LuDownload aria-hidden="true" size={18} />Descargar copia</Button>
-          <input ref={jfile} type="file" accept="application/json,.json" className="sr" aria-label="Elegir copia de seguridad" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; try { await importJSON(await f.text()); setMsg({ tone: 'ok', text: 'Copia restaurada.' }); } catch (x) { setMsg({ tone: 'bad', text: x instanceof ValidationError ? x.message : 'No se ha podido restaurar.' }); } }} />
+          <input ref={jfile} type="file" accept="application/json,.json" className="sr" aria-label="Elegir copia de seguridad" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void onBackup(f); }} />
           <Button variant="secondary" onClick={() => jfile.current?.click()}><LuUpload aria-hidden="true" size={18} />Restaurar copia</Button>
-          <p className="hint">Restaurar sustituye lo que tengas ahora.</p>
+          <p className="hint">Restaurar sustituye lo que tengas ahora. Antes de hacerlo te pido confirmación y guardo una copia de lo actual.</p>
+          {prev ? (
+            <>
+              <Banner tone="info">Hay una copia de antes del último cambio grande ({prev.accounts} cuentas, {prev.transactions} movimientos; {prev.savedAt ? new Date(prev.savedAt).toLocaleString('es-ES') : 'sin fecha'}).</Banner>
+              <div className="btnrow">
+                <Button variant="secondary" onClick={async () => { try { await restorePreviousCopy(); setMsg({ tone: 'ok', text: 'Copia anterior recuperada.' }); } catch (x) { setMsg({ tone: 'bad', text: x instanceof ValidationError ? x.message : 'No se ha podido recuperar.' }); } }}>Recuperarla</Button>
+                <Button variant="ghost" onClick={() => download(`aljibe-anterior-${todayISO()}.json`, JSON.stringify(prev.state), 'application/json', false)}><LuDownload aria-hidden="true" size={18} />Descargarla</Button>
+                <Button variant="ghost" onClick={() => setDiscard(true)}><LuTrash2 aria-hidden="true" size={18} />Borrarla</Button>
+              </div>
+            </>
+          ) : null}
         </section>
         <section className="card pad form" aria-label="Datos de ejemplo">
           <h2>Datos de ejemplo</h2>
@@ -168,10 +189,23 @@ function DataScreen() {
           <div className="btnrow"><Button variant="secondary" onClick={() => setConfirm('seed')}>Cargar ejemplo</Button><Button variant="danger" onClick={() => setConfirm('clear')}>Vaciar todo</Button></div>
         </section>
       </main>
+      {discard && prev ? (
+        <Sheet title="¿Borrar la copia anterior?" onClose={() => setDiscard(false)}>
+          <p>Se borra de este móvil la copia de antes del último cambio grande ({prev.accounts} cuentas, {prev.transactions} movimientos). No se puede deshacer; si dudas, pulsa antes «Descargarla».</p>
+          <div className="btnrow"><Button variant="secondary" onClick={() => setDiscard(false)}>Cancelar</Button><Button variant="danger" onClick={async () => { setDiscard(false); try { await discardPreviousCopy(); setPrev(null); setMsg({ tone: 'ok', text: 'Copia anterior borrada de este móvil.' }); } catch { setMsg({ tone: 'bad', text: 'No se ha podido borrar la copia anterior.' }); } }}>Borrar</Button></div>
+        </Sheet>
+      ) : null}
+      {restore ? (
+        <Sheet title="¿Restaurar esta copia?" onClose={() => setRestore(null)}>
+          <p>El archivo tiene <b>{restore.accounts} cuentas</b> y <b>{restore.transactions} movimientos</b>. Ahora tienes {s.accounts.length} cuentas y {s.transactions.length} movimientos, que se sustituirán.</p>
+          <p className="hint">Antes se guarda una copia de lo que tienes ahora; podrás recuperarla desde esta misma pantalla.</p>
+          <div className="btnrow"><Button variant="secondary" onClick={() => setRestore(null)}>Cancelar</Button><Button variant="danger" onClick={async () => { const r = restore; setRestore(null); try { await replaceAllData(r.state); setMsg({ tone: 'ok', text: `Copia restaurada: ${r.accounts} cuentas y ${r.transactions} movimientos.` }); } catch (x) { setMsg({ tone: 'bad', text: x instanceof ValidationError ? x.message : 'No se ha podido restaurar.' }); } }}>Restaurar</Button></div>
+        </Sheet>
+      ) : null}
       {confirm ? (
         <Sheet title={confirm === 'clear' ? '¿Vaciar todos los datos?' : '¿Cargar los datos de ejemplo?'} onClose={() => setConfirm(null)}>
-          <p>{confirm === 'clear' ? 'Se borran cuentas, transacciones y presupuestos. Descarga una copia antes si quieres poder recuperarlos.' : 'Sustituye todo lo que tengas ahora por datos inventados.'}</p>
-          <div className="btnrow"><Button variant="secondary" onClick={() => setConfirm(null)}>Cancelar</Button><Button variant="danger" onClick={async () => { if (confirm === 'clear') await clearAll(); else await resetSeed(); setConfirm(null); setMsg({ tone: 'ok', text: confirm === 'clear' ? 'Todo vaciado.' : 'Datos de ejemplo cargados.' }); }}>{confirm === 'clear' ? 'Vaciar' : 'Sustituir'}</Button></div>
+          <p>{confirm === 'clear' ? 'Se borran cuentas, transacciones y presupuestos. Se guarda una copia de lo actual en este móvil que podrás recuperar desde esta pantalla; descarga también una copia de seguridad si quieres tenerla fuera.' : 'Sustituye todo lo que tengas ahora por datos inventados.'}</p>
+          <div className="btnrow"><Button variant="secondary" onClick={() => setConfirm(null)}>Cancelar</Button><Button variant="danger" onClick={async () => { const what = confirm; setConfirm(null); try { if (what === 'clear') await clearAll(); else await resetSeed(); setMsg({ tone: 'ok', text: what === 'clear' ? 'Todo vaciado. Puedes recuperar lo anterior más abajo.' : 'Datos de ejemplo cargados. Puedes recuperar lo anterior más abajo.' }); } catch (x) { setMsg({ tone: 'bad', text: x instanceof ValidationError ? x.message : 'No se ha podido completar.' }); } }}>{confirm === 'clear' ? 'Vaciar' : 'Sustituir'}</Button></div>
         </Sheet>
       ) : null}
     </>

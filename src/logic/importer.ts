@@ -1,5 +1,5 @@
 import type { Id, Rule, State, Transaction } from './types.ts';
-import { parseCents } from './money.ts';
+import { parseAmount, parseCents } from './money.ts';
 import { iso } from './dates.ts';
 
 export function applyRules(rules: Rule[], t: Pick<Transaction, 'merchant' | 'categoryId'>): { merchant: string; categoryId: Id } {
@@ -86,13 +86,18 @@ export function rowsFromCSV(rows: string[][], map: Mapping, headerIndex = 0): { 
     const merchant = (r[map.merchant] ?? '').trim();
     if (!merchant) return bad.push({ line, reason: 'Sin descripción' });
     let cents: number | null;
-    if (map.amount !== null) cents = parseCents(r[map.amount] ?? '');
+    if (map.amount !== null) cents = parseAmount(r[map.amount] ?? '');
     else {
-      const d = parseCents(r[map.debit!] ?? '0') ?? 0, c = parseCents(r[map.credit!] ?? '0') ?? 0;
-      cents = c - Math.abs(d);
-      if ((r[map.debit!] ?? '').trim() === '' && (r[map.credit!] ?? '').trim() === '') cents = null;
+      const dt = (r[map.debit!] ?? '').trim(), ct = (r[map.credit!] ?? '').trim();
+      const d = dt === '' ? 0 : parseAmount(dt), c = ct === '' ? 0 : parseAmount(ct);
+      // una celda con texto que no es un importe no se toma por cero: la fila se marca como no válida
+      cents = d === null || c === null || (dt === '' && ct === '') ? null : c - Math.abs(d);
     }
-    if (cents === null) return bad.push({ line, reason: 'Importe no válido' });
+    if (cents === null) {
+      // di qué texto no se ha entendido: así se ve si es un formato raro o una columna mal elegida
+      const raw = (map.amount !== null ? (r[map.amount] ?? '') : [r[map.debit!], r[map.credit!]].filter((x) => (x ?? '').trim() !== '').join(' / ')).trim().replace(/\s+/g, ' ');
+      return bad.push({ line, reason: raw ? `Importe no válido («${raw.length > 24 ? `${raw.slice(0, 24)}…` : raw}»)` : 'Importe vacío' });
+    }
     ok.push({ date, merchant, amountCents: cents });
   });
   return { ok, bad };

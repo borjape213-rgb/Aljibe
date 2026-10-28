@@ -3,7 +3,7 @@ import { LuListChecks, LuChevronRight, LuCalendarCheck } from 'react-icons/lu';
 import { widgetOrder } from '../nav.ts';
 import { daysBetween } from '../logic/dates.ts';
 import { needsCategory } from '../logic/review.ts';
-import { resetSeed } from '../actions.ts';
+import { resetSeed, ValidationError } from '../actions.ts';
 import { Button } from '../ui.tsx';
 import { useData } from '../store.ts';
 import { accountValueCents, changeOver, netWorthSeries } from '../logic/ledger.ts';
@@ -11,7 +11,7 @@ import { budgetSummary } from '../logic/budget.ts';
 import { occurrencesInMonth } from '../logic/recurring.ts';
 import { holdingRows } from '../logic/invest.ts';
 import { addDays, addMonths, formatShort, monthStart, todayISO, formatMonth } from '../logic/dates.ts';
-import { Amount, Banner, Change, EmptyState, ProgressBar, money } from '../ui.tsx';
+import { Amount, Banner, Change, EmptyState, ProgressBar, money, toast } from '../ui.tsx';
 import { AreaChart } from '../charts.tsx';
 import { TopBar } from './shell.tsx';
 import { TxRow } from './common.tsx';
@@ -130,7 +130,7 @@ function Guide() {
           </li>
         ))}
       </ol>
-      <div style={{ marginTop: 16 }}><Button variant="ghost" onClick={() => resetSeed()}>Probar con datos de ejemplo</Button></div>
+      <div style={{ marginTop: 16 }}><Button variant="ghost" onClick={async () => { try { await resetSeed(); } catch (x) { toast(x instanceof ValidationError ? x.message : 'No se han podido cargar los datos de ejemplo.'); } }}>Probar con datos de ejemplo</Button></div>
     </section>
   );
 }

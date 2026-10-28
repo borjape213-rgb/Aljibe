@@ -210,3 +210,69 @@ import { categorizeQueue, needsCategory } from './src/logic/review.ts';
   assert.equal(needsCategory(txs[0]), true); assert.equal(needsCategory(txs[4]), false);
 }
 console.log('cola de sin categoría ok');
+
+// ---- importes tal como los escriben los bancos: moneda, paréntesis y signo detrás ----
+import { parseAmount } from './src/logic/money.ts';
+{
+  const good = [['-45,20 €', -4520], ['45,20 EUR', 4520], ['EUR 45,20', 4520], ['(45,20)', -4520], ['45,20-', -4520], ['−45,20 €', -4520], ['1.234,56 €', 123456], ['-1.234,56 EUR', -123456],
+    ['$ 12', 1200], ['+45,20', 4520], ['(45,20) €', -4520], ['(45,20 €)', -4520], ['45,20 €', 4520], ['  -1,50€ ', -150], ['45,20 euros', 4520]];
+  for (const [input, expected] of good) assert.equal(parseAmount(input), expected, input);
+  // lo ambiguo o que no es un importe se rechaza, no se adivina
+  for (const bad of ['', '€', 'abc', '(-45,20)', '-45,20-', '--5', '45,2,0', '12 345 EUR x', '1,2345 €']) assert.equal(parseAmount(bad), null, JSON.stringify(bad));
+  const csv = parseCSV('Fecha;Concepto;Importe\n01/10/2026;Café;-1,50 €\n01/10/2026;Café;-1,50 €\n02/10/2026;Nómina;"1.234,56 EUR"\n03/10/2026;Recibo;(45,20)\n04/10/2026;Otro;45,20-\n05/10/2026;Raro;abc\n06/10/2026;Vacío;\n');
+  const one = rowsFromCSV(csv, guessMapping(csv[0]));
+  assert.deepEqual(one.ok.map((r) => r.amountCents), [-150, -150, 123456, -4520, -4520]);
+  assert.equal(one.bad.length, 2);
+  assert.match(one.bad[0].reason, /«abc»/);       // el mensaje dice qué texto no se ha entendido
+  assert.equal(one.bad[1].reason, 'Importe vacío');
+  const dc = parseCSV('Fecha;Concepto;Cargo;Abono\n01/10/2026;A;12,50 €;\n02/10/2026;B;;100,00 €\n03/10/2026;C;xx;\n04/10/2026;D;;\n');
+  const two = rowsFromCSV(dc, guessMapping(dc[0]));
+  assert.deepEqual(two.ok.map((r) => r.amountCents), [-1250, 10000]);
+  assert.deepEqual(two.bad.map((b) => b.line), [4, 5]);   // texto raro en una celda ≠ cero; fila sin importe tampoco
+}
+console.log('importes con símbolo de moneda ok');
+
+// ---- validar lo guardado y las copias de seguridad antes de sustituir datos ----
+import { normalizeState, countsOf } from './src/logic/state.ts';
+{
+  const full = JSON.parse(JSON.stringify(s));
+  const ok = normalizeState(full);
+  assert.ok(ok.ok, ok.error);
+  assert.deepEqual(ok.state.transactions, s.transactions);   // un estado bueno pasa sin cambios
+  assert.deepEqual(ok.state.accounts, s.accounts);
+  assert.deepEqual(countsOf(ok.state), { accounts: s.accounts.length, transactions: s.transactions.length });
+
+  // a una copia a la que le faltan partes opcionales se le completan los valores por defecto (antes rompía el renderizado)
+  const min = normalizeState({ version: 1, accounts: [], transactions: [], categories: [] });
+  assert.ok(min.ok);
+  for (const k of ['rules', 'holdings', 'securities', 'recurring', 'budgetItems', 'rollovers', 'tags', 'benchmarks']) assert.deepEqual(min.state[k], [], k);
+  assert.deepEqual(min.state.prices, {});
+  assert.equal(min.state.settings.currency, 'EUR');
+  assert.ok(min.state.settings.dashboardWidgets.length && min.state.settings.navItems.length);
+  assert.ok(min.state.categories.some((c) => c.id === 'c-none') && min.state.groups.some((g) => g.id === min.state.categories.find((c) => c.id === 'c-none').groupId));
+  // ajustes parciales: se conservan los que hay y se completa el resto
+  const part = normalizeState({ version: 1, accounts: [], transactions: [], categories: [], settings: { theme: 'dark', currency: 'EUR', locale: 'es-ES' } });
+  assert.ok(part.ok); assert.equal(part.state.settings.theme, 'dark'); assert.ok(Array.isArray(part.state.settings.dashboardWidgets));
+  // la marca antigua "por revisar" se descarta
+  const legacy = normalizeState({ version: 1, accounts: [], categories: [], transactions: [{ id: 't1', accountId: 'a', date: '2026-01-02', amountCents: -100, categoryId: 'c-none', needsReview: true }] });
+  assert.ok(legacy.ok); assert.equal('needsReview' in legacy.state.transactions[0], false); assert.deepEqual(legacy.state.transactions[0].tags, []);
+
+  // lo esencial roto no se arregla: se rechaza diciendo por qué
+  const base = { version: 1, accounts: [], transactions: [], categories: [] };
+  const rejects = (raw, re) => { const r = normalizeState(raw); assert.equal(r.ok, false, JSON.stringify(raw).slice(0, 90)); assert.match(r.error, re); };
+  rejects(null, /no es una copia/); rejects([], /no es una copia/); rejects({}, /no es una copia/); rejects('x', /no es una copia/);
+  rejects({ ...base, version: 2 }, /Versión de datos no reconocida \(2\)/);
+  rejects({ ...base, accounts: undefined }, /cuentas/); rejects({ ...base, transactions: undefined }, /movimientos/); rejects({ ...base, categories: undefined }, /categorías/);
+  rejects({ ...base, accounts: {} }, /cuentas/); rejects({ ...base, groups: 'x' }, /grupos/);
+  const tx = (o) => ({ id: 't1', accountId: 'a', date: '2026-01-02', amountCents: -100, categoryId: 'c-none', ...o });
+  rejects({ ...base, transactions: [tx({ date: 'ayer' })] }, /Movimiento 1: fecha/);
+  rejects({ ...base, transactions: [tx({ amountCents: 12.5 })] }, /Movimiento 1: importe/);
+  rejects({ ...base, transactions: [tx({ amountCents: '12' })] }, /Movimiento 1: importe/);
+  rejects({ ...base, transactions: [tx({ splits: [{ categoryId: 'x' }] })] }, /división/);
+  rejects({ ...base, accounts: [{ id: 'a', name: 'X', group: 'cash', balanceCents: '10' }] }, /saldo/);
+  rejects({ ...base, accounts: [{ id: 'a', name: 'X', group: 'banco', balanceCents: 10 }] }, /tipo/);
+  rejects({ ...base, prices: { x: [{ date: '2026-01-01' }] } }, /precios/);
+  rejects({ ...base, holdings: [{ id: 'h', accountId: 'a' }] }, /Posición 1/);
+  rejects({ ...base, settings: { currency: 5 } }, /ajustes/);
+}
+console.log('validación de datos guardados y copias ok');

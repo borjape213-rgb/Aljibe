@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { Component, useEffect, useState, type ReactNode } from 'react';
 import { LuBell, LuChartColumn, LuCreditCard, LuHouse, LuLayers, LuMenu, LuWallet, LuRepeat, LuTrendingUp, LuSettings, LuTag, LuSlidersHorizontal, LuDownload, LuListFilter, LuCheck, LuX, LuMoon } from 'react-icons/lu';
-import { init, useData, usePersistError } from './store.ts';
+import { continueWithoutSaving, getLock, init, useData, usePersistError, type StorageLock } from './store.ts';
 import { go, useRoute } from './router.tsx';
 import { Banner, IconButton, Skeleton, ToastHost } from './ui.tsx';
 import { Dashboard } from './screens/dashboard.tsx';
@@ -15,6 +15,7 @@ import { Settings } from './screens/settings.tsx';
 import { TopBar } from './screens/shell.tsx';
 import { needsCategory } from './logic/review.ts';
 import { MonthReview } from './screens/monthreview.tsx';
+import { LockScreen } from './screens/lock.tsx';
 import { BAR_SLOTS, DESTS, navOrder } from './nav.ts';
 
 function activeNav(p: string[]) {
@@ -85,10 +86,12 @@ class Boundary extends Component<{ children: ReactNode }, { error: string | null
 function Boot() {
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { init().then(() => setReady(true)).catch((e) => setErr(String(e))); }, []);
+  const [lock, setLock] = useState<StorageLock | null>(null);
+  useEffect(() => { init().then(() => { setLock(getLock()); setReady(true); }).catch((e) => setErr(String(e))); }, []);
   useEffect(() => { if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {}); }, []);
   if (err) return <div className="app"><main><Banner tone="bad">No se han podido cargar los datos: {err}</Banner></main></div>;
   if (!ready) return <div className="app"><main><Skeleton h={24} w="50%" /><Skeleton h={160} /><Skeleton h={96} /></main></div>;
+  if (lock) return <LockScreen lock={lock} onContinue={() => { continueWithoutSaving(); setLock(null); }} />;
   return <App />;
 }
 createRoot(document.getElementById('root')!).render(<Boot />);
