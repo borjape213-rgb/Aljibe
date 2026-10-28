@@ -6,6 +6,7 @@ Finanzas personales con los datos en tu móvil (IndexedDB). Sin cuenta, sin serv
 
 - Primer arranque: vacío, con una guía de tres pasos. Añade `?demo=1` a la dirección la primera vez para cargar datos de ejemplo (o usa el botón de la guía).
 - Importar: Ajustes, Datos y copia. Acepta `.csv` y `.xlsx` (primera hoja) con encabezados de fecha, concepto e importe (o débito y crédito). Si hay fecha operativa y fecha valor, usa la operativa. Lee titular y saldo del encabezado del extracto (probado con el formato de Banc Sabadell). Importar el mismo archivo dos veces no duplica movimientos.
+- Precios: Inversiones, «Actualizar precios». Solo cuando lo pides y con conexión. Usa Alpha Vantage con tu clave gratuita (se pega cada vez; nunca se guarda ni entra en las copias) y el tipo de cambio del BCE (Frankfurter) para valores en otra moneda. Cada valor lleva un símbolo (p. ej. `AIR:EPA`, o `AIR.PAR` tal cual) y su moneda, en la ficha del valor. Se ve una vista previa antes de guardar. El plan gratuito limita las consultas (unas 25 al día y 5 por minuto).
 - Copia de seguridad: descarga el JSON desde Ajustes. Hay un aviso en Inicio a los 30 días.
 
 ## Desarrollo
@@ -16,6 +17,7 @@ npm run build                      # genera dist/
 npm test                           # lógica de dinero, presupuesto, importación y Excel
 python3 -m http.server -d dist 8765
 python3 e2e.py                     # pruebas de uso con Playwright (el servidor debe estar en marcha)
+python3 e2e_prices.py              # actualización de precios con el proveedor simulado
 python3 e2e_data.py                # seguridad de los datos: arranque con fallos, restaurar copias, importes con símbolo
 ```
 

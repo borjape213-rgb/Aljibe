@@ -93,6 +93,12 @@ export interface Security {
   ticker: string;
   name: string;
   assetClass: AssetClass;
+  /** Cómo lo busca el proveedor de precios, p. ej. "AIR:EPA". */
+  symbol?: string;
+  /** Moneda en la que cotiza (EUR si no se indica). */
+  currency?: string;
+  /** Última vez que se actualizó el precio desde internet (ISO). */
+  updatedAt?: string;
 }
 export interface PricePoint {
   date: string;

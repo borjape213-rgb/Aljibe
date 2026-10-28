@@ -11,6 +11,7 @@ import type { AssetClass } from '../logic/types.ts';
 import { Amount, Banner, Button, Change, EmptyState, Field, IconButton, Ranges, Segmented, Sheet, money, toast } from '../ui.tsx';
 import { AreaChart, CHART_COLORS, StackedBar } from '../charts.tsx';
 import { TopBar } from './shell.tsx';
+import { PriceUpdate, SymbolSheet, fmtStamp } from './priceupdate.tsx';
 import { addPrice, removeHolding, saveHolding, saveSecurity, ValidationError } from '../actions.ts';
 
 const num = (x: string) => { const n = Number(x.replace(',', '.')); return Number.isFinite(n) ? n : NaN; };
@@ -22,6 +23,8 @@ export function Investments({ route }: { route: Route }) {
   const days = RANGES.find((r) => r.id === rid)?.days ?? 91;
   const bench = route.query.get('bench') || '';
   const [adding, setAdding] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const lastUpdate = s.securities.reduce((m, x) => (x.updatedAt && x.updatedAt > m ? x.updatedAt : m), '');
   const rows = useMemo(() => holdingRows(s, null, days), [s, days]);
   const pr = useMemo(() => portfolioReturn(s, null, days), [s, days]);
   const series = useMemo(() => portfolioPctSeries(s, null, days), [s, days]);
@@ -35,6 +38,10 @@ export function Investments({ route }: { route: Route }) {
       <main>
         {rows.length === 0 ? <EmptyState title="Sin posiciones" text={invAccounts.length ? 'Añade una posición con su cantidad y precio.' : 'Primero crea una cuenta de inversión en Cuentas.'} action={invAccounts.length ? <Button onClick={() => setAdding(true)}>Añadir posición</Button> : <a className="btn" href="#/accounts">Ir a cuentas</a>} /> : (
           <>
+            <div className="row" style={{ minHeight: 48 }}>
+              <span className="grow xs muted">{lastUpdate ? `Precios actualizados el ${fmtStamp(lastUpdate)}` : 'Precios introducidos a mano'}</span>
+              <Button variant="secondary" onClick={() => setUpdating(true)}>Actualizar precios</Button>
+            </div>
             <Segmented label="Vista" value={view} onChange={(v) => setQuery('view', v === 'holdings' ? null : v)} options={[{ id: 'holdings', label: 'Posiciones' }, { id: 'allocation', label: 'Reparto' }]} />
             <section className="card pad" aria-label="Rendimiento">
               <div className="xl b6"><Amount cents={pr.valueCents} tone="none" /></div>
@@ -76,6 +83,7 @@ export function Investments({ route }: { route: Route }) {
         )}
       </main>
       {adding ? <HoldingForm onClose={() => setAdding(false)} /> : null}
+      {updating ? <PriceUpdate onClose={() => setUpdating(false)} /> : null}
     </>
   );
 }
@@ -87,7 +95,7 @@ function HoldingForm({ onClose, securityId }: { onClose: () => void; securityId?
   const [sec, setSec] = useState(securityId ?? s.securities[0]?.id ?? '__new');
   const [qty, setQty] = useState('');
   const [cost, setCost] = useState('');
-  const [name, setName] = useState(''); const [ticker, setTicker] = useState(''); const [cls, setCls] = useState<AssetClass>('equity'); const [price, setPrice] = useState('');
+  const [name, setName] = useState(''); const [ticker, setTicker] = useState(''); const [cls, setCls] = useState<AssetClass>('equity'); const [price, setPrice] = useState(''); const [symbol, setSymbol] = useState(''); const [cur, setCur] = useState('EUR');
   const [err, setErr] = useState<Record<string, string>>({});
   if (!accounts.length) return <Sheet title="Añadir posición" onClose={onClose}><Banner tone="warn">Crea primero una cuenta de tipo Inversiones.</Banner></Sheet>;
   const submit = async () => {
@@ -100,7 +108,7 @@ function HoldingForm({ onClose, securityId }: { onClose: () => void; securityId?
     setErr(e);
     if (Object.keys(e).length) return;
     try {
-      const id = sec === '__new' ? await saveSecurity({ name, ticker, assetClass: cls, price: num(price), date: todayISO() }) : sec;
+      const id = sec === '__new' ? await saveSecurity({ name, ticker, assetClass: cls, price: num(price), date: todayISO(), symbol, currency: cur.trim().toUpperCase() || 'EUR' }) : sec;
       await saveHolding({ accountId: account, securityId: id, quantity: q, costBasisCents: c });
       toast('Posición guardada'); onClose();
     } catch (x) { setErr({ name: x instanceof ValidationError ? x.message : 'No se ha podido guardar.' }); }
@@ -113,6 +121,8 @@ function HoldingForm({ onClose, securityId }: { onClose: () => void; securityId?
         {sec === '__new' ? <>
           <Field id="hn" label="Nombre" error={err.name}>{(p) => <input {...p} className="input" value={name} onChange={(e) => setName(e.target.value)} />}</Field>
           <Field id="ht" label="Símbolo">{(p) => <input {...p} className="input" value={ticker} onChange={(e) => setTicker(e.target.value)} maxLength={12} />}</Field>
+          <Field id="hy" label="Símbolo para precios online (opcional)" hint="Por ejemplo AIR:EPA o AAPL.">{(p) => <input {...p} className="input" value={symbol} onChange={(e) => setSymbol(e.target.value)} maxLength={20} autoCapitalize="characters" />}</Field>
+          <Field id="hm" label="Moneda en la que cotiza" error={err.cur}>{(p) => <input {...p} className="input" value={cur} onChange={(e) => setCur(e.target.value)} maxLength={3} autoCapitalize="characters" />}</Field>
           <Field id="hc" label="Tipo de activo">{(p) => <select {...p} className="input" value={cls} onChange={(e) => setCls(e.target.value as AssetClass)}>{(Object.keys(CLASS_LABEL) as AssetClass[]).map((k) => <option key={k} value={k}>{CLASS_LABEL[k]}</option>)}</select>}</Field>
           <Field id="hp" label="Precio actual" error={err.price}>{(p) => <input {...p} className="input num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />}</Field>
         </> : null}
@@ -130,6 +140,7 @@ export function HoldingDetail({ id }: { id: string }) {
   const [rid, setRid] = useState('1y');
   const [adding, setAdding] = useState(false);
   const [priceFor, setPriceFor] = useState(false);
+  const [symFor, setSymFor] = useState(false);
   const [pv, setPv] = useState('');
   const [pe, setPe] = useState<string | null>(null);
   const days = RANGES.find((r) => r.id === rid)?.days ?? 365;
@@ -150,7 +161,7 @@ export function HoldingDetail({ id }: { id: string }) {
           <Change pct={ch.pct} label={rid} />
           <AreaChart points={pts} label={`Precio de ${sec.name}`} format={(v) => (v / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} />
           <Ranges value={rid as '1m'} onChange={setRid} options={RANGES.map((r) => ({ id: r.id, label: r.label }))} />
-          <p className="xs muted" style={{ textAlign: 'center' }}>{sec.ticker} · {CLASS_LABEL[sec.assetClass]} · precios de ejemplo/manuales</p>
+          <p className="xs muted" style={{ textAlign: 'center' }}>{sec.ticker} · {CLASS_LABEL[sec.assetClass]} · {sec.updatedAt ? `precio actualizado el ${fmtStamp(sec.updatedAt)}` : 'precio manual'}{sec.symbol ? ` · ${sec.symbol} (${sec.currency ?? 'EUR'})` : ''}</p>
         </section>
         <section className="card" aria-label="Tus posiciones">
           <div className="sechead"><span>Tus posiciones</span><Amount cents={total} tone="none" /></div>
@@ -162,10 +173,11 @@ export function HoldingDetail({ id }: { id: string }) {
             </div>
           ))}
         </section>
-        <div className="btnrow"><Button variant="secondary" onClick={() => setAdding(true)}>Añadir posición</Button><Button variant="secondary" onClick={() => setPriceFor(true)}>Actualizar precio</Button></div>
+        <div className="btnrow"><Button variant="secondary" onClick={() => setAdding(true)}>Añadir posición</Button><Button variant="secondary" onClick={() => setPriceFor(true)}>Actualizar precio</Button><Button variant="secondary" onClick={() => setSymFor(true)}>Símbolo y moneda</Button></div>
         {hs.length === 0 ? null : null}
       </main>
       {adding ? <HoldingForm securityId={id} onClose={() => setAdding(false)} /> : null}
+      {symFor ? <SymbolSheet id={id} onClose={() => setSymFor(false)} /> : null}
       {priceFor ? (
         <Sheet title="Precio de hoy" onClose={() => setPriceFor(false)}>
           <form className="form" noValidate onSubmit={async (e) => { e.preventDefault(); const n = num(pv); if (!(n > 0)) return setPe('Escribe un precio mayor que cero.'); await addPrice(id, today, n); toast('Precio actualizado'); setPriceFor(false); }}>

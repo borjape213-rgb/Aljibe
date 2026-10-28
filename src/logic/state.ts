@@ -112,7 +112,7 @@ export function normalizeState(raw: unknown): Normalized {
       state: {
         version: 1, settings, accounts, groups: grps, categories: cats, tags: tags as State['tags'], transactions,
         budgetItems: budgetItems as State['budgetItems'], rollovers: rollovers as State['rollovers'], rules: rules as State['rules'],
-        recurring: recurring as State['recurring'], securities: securities as State['securities'], prices: prices as State['prices'],
+        recurring: recurring as State['recurring'], securities: (securities as Record<string, unknown>[]).map((r) => ({ ...r, symbol: str(r.symbol) ? r.symbol : undefined, currency: str(r.currency) ? r.currency : undefined, updatedAt: str(r.updatedAt) ? r.updatedAt : undefined })) as State['securities'], prices: prices as State['prices'],
         holdings: holdings as State['holdings'], benchmarks: benchmarks as State['benchmarks'],
         seededAt: str(p.seededAt) ? (p.seededAt as string) : null,
       },

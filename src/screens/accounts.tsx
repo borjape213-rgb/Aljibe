@@ -117,7 +117,7 @@ function Summary({ s, mode, setMode }: { s: State; mode: 'totals' | 'percent'; s
   );
 }
 
-const SUBTYPES: Record<AccountGroup, string[]> = { cash: ['Cuenta corriente', 'Ahorro', 'Efectivo'], credit: ['Tarjeta de crédito'], loans: ['Préstamo', 'Hipoteca'], investments: ['Fondos', 'Jubilación', 'Cripto'], assets: ['Inmueble', 'Vehículo', 'Otro bien'], other: ['Otra'] };
+const SUBTYPES: Record<AccountGroup, string[]> = { cash: ['Cuenta corriente', 'Ahorro', 'Efectivo'], credit: ['Tarjeta de crédito'], loans: ['Préstamo', 'Hipoteca'], investments: ['Fondos', 'Jubilación', 'Cripto', 'Loans'], assets: ['Inmueble', 'Vehículo', 'Otro bien'], other: ['Otra'] };
 export function AccountForm({ onClose, account }: { onClose: () => void; account?: Account }) {
   const [name, setName] = useState(account?.name ?? '');
   const [group, setGroup] = useState<AccountGroup>(account?.group ?? 'cash');

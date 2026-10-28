@@ -214,12 +214,30 @@ export async function saveHolding(h: { id?: Id; accountId: Id; securityId: Id; q
   mutate((s) => ({ ...s, holdings: h.id ? s.holdings.map((x) => (x.id === h.id ? { ...x, ...h, id: h.id! } : x)) : [...s.holdings, { id: uid('h'), accountId: h.accountId, securityId: h.securityId, quantity: h.quantity, costBasisCents: h.costBasisCents }] }));
 }
 export async function removeHolding(id: Id) { mutate((s) => ({ ...s, holdings: s.holdings.filter((h) => h.id !== id) })); }
-export async function saveSecurity(x: { ticker: string; name: string; assetClass: State['securities'][number]['assetClass']; price: number; date: string }): Promise<Id> {
+export async function saveSecurity(x: { ticker: string; name: string; assetClass: State['securities'][number]['assetClass']; price: number; date: string; symbol?: string; currency?: string }): Promise<Id> {
   if (!x.name.trim() || !x.ticker.trim()) throw new ValidationError('Escribe nombre y símbolo.');
   if (!(x.price > 0)) throw new ValidationError('El precio debe ser mayor que cero.');
+  if (x.currency && !/^[A-Z]{3}$/.test(x.currency)) throw new ValidationError('La moneda debe ser un código de tres letras (EUR, USD…).');
   const id = uid('s');
-  mutate((s) => ({ ...s, securities: [...s.securities, { id, ticker: x.ticker.trim().toUpperCase(), name: x.name.trim(), assetClass: x.assetClass }], prices: { ...s.prices, [id]: [{ date: x.date, price: x.price }] } }));
+  mutate((s) => ({ ...s, securities: [...s.securities, { id, ticker: x.ticker.trim().toUpperCase(), name: x.name.trim(), assetClass: x.assetClass, symbol: x.symbol?.trim().toUpperCase() || undefined, currency: x.currency || undefined }], prices: { ...s.prices, [id]: [{ date: x.date, price: x.price }] } }));
   return id;
+}
+export async function setSecurityQuoteInfo(id: Id, symbol: string, currency: string): Promise<void> {
+  if (!/^[A-Z]{3}$/.test(currency)) throw new ValidationError('La moneda debe ser un código de tres letras (EUR, USD…).');
+  mutate((s) => ({ ...s, securities: s.securities.map((x) => (x.id === id ? { ...x, symbol: symbol.trim().toUpperCase() || undefined, currency } : x)) }));
+}
+/** Guarda los precios obtenidos de internet (ya convertidos a la moneda base) y anota cuándo se actualizó cada valor. */
+export async function applyQuotes(rows: { id: Id; date: string; price: number }[]): Promise<number> {
+  const valid = rows.filter((r) => r.price > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.date));
+  if (!valid.length) return 0;
+  const now = new Date().toISOString();
+  mutate((s) => {
+    const prices = { ...s.prices };
+    for (const r of valid) prices[r.id] = [...(prices[r.id] ?? []).filter((p) => p.date !== r.date), { date: r.date, price: r.price }].sort((a, b) => (a.date < b.date ? -1 : 1));
+    const ids = new Set(valid.map((r) => r.id));
+    return { ...s, prices, securities: s.securities.map((x) => (ids.has(x.id) ? { ...x, updatedAt: now } : x)) };
+  });
+  return valid.length;
 }
 export async function addPrice(securityId: Id, date: string, price: number): Promise<void> {
   if (!(price > 0)) throw new ValidationError('El precio debe ser mayor que cero.');

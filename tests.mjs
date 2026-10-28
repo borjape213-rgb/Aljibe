@@ -308,3 +308,44 @@ console.log('validación de datos guardados y copias ok');
   assert.ok(detectRecurring(st).length >= 1, 'cuota mensual detectada como recurrente');
 }
 console.log('extracto tipo Sabadell ok');
+
+// ---- actualización de precios bajo demanda (proveedor simulado: la integración continua no usa internet) ----
+{
+  const { toProviderSymbol, parseDaily, parseFx, fetchQuotes, previewQuotes } = await import('./src/logic/quotes.ts');
+  assert.equal(toProviderSymbol('AIR:EPA'), 'AIR.PAR'); assert.equal(toProviderSymbol(' sap:etr '), 'SAP.DEX');
+  assert.equal(toProviderSymbol('AIR.PAR'), 'AIR.PAR'); assert.equal(toProviderSymbol('aapl'), 'AAPL'); assert.equal(toProviderSymbol('XYZ:ZZZ'), 'XYZ.ZZZ');
+  const daily = (o) => ({ 'Meta Data': {}, 'Time Series (Daily)': o });
+  const d = parseDaily(daily({ '2026-10-26': { '4. close': '140.0' }, '2026-10-27': { '4. close': '142.50' }, '2026-10-23': { '4. close': '1' } }));
+  assert.deepEqual(d, { ok: true, value: { date: '2026-10-27', close: 142.5 } });
+  assert.equal(parseDaily({ 'Error Message': 'Invalid API call' }).error, 'not-found');
+  assert.equal(parseDaily({ Information: 'Our standard API rate limit is 25 requests per day.' }).error, 'rate-limit');
+  assert.equal(parseDaily({ Information: 'Invalid API key' }).error, 'provider');
+  assert.equal(parseDaily({}).error, 'bad-data'); assert.equal(parseDaily(daily({ '2026-10-27': { '4. close': '0' } })).error, 'bad-data'); assert.equal(parseDaily(null).error, 'bad-data');
+  assert.equal(parseFx({ rate: 0.92 }, 'EUR').value, 0.92); assert.equal(parseFx({ rates: { EUR: 0.93 } }, 'EUR').value, 0.93); assert.equal(parseFx({ rate: 0 }, 'EUR').ok, false);
+  const calls = [];
+  const mk = (map) => async (url) => { calls.push(url); const k = Object.keys(map).find((x) => url.includes(x)); if (!k) throw new Error('sin red'); const v = map[k]; return { ok: true, json: async () => v }; };
+  const f = mk({ 'AIR.PAR': daily({ '2026-10-27': { '4. close': '150' } }), 'AAPL': daily({ '2026-10-27': { '4. close': '200' } }), 'frankfurter': { rate: 0.9 } });
+  const res = await fetchQuotes({ apiKey: 'K', base: 'EUR', gapMs: 0, fetchFn: f, items: [{ id: 'a', symbol: 'AIR:EPA', currency: 'EUR' }, { id: 'b', symbol: 'AAPL', currency: 'USD' }, { id: 'c', symbol: '', currency: 'EUR' }, { id: 'e', symbol: 'NOPE', currency: 'EUR' }] });
+  assert.equal(res[0].price, 150); assert.equal(res[1].price, 180); assert.equal(res[1].nativePrice, 200); assert.equal(res[1].rate, 0.9);
+  assert.equal(res[2].error, 'no-symbol'); assert.equal(res[3].error, 'network');
+  assert.ok(calls.every((u) => !u.includes('frankfurter') || !u.includes('K')), 'la clave no va al servicio de cambio');
+  assert.equal(calls.filter((u) => u.includes('frankfurter')).length, 1);
+  // al llegar al límite no se siguen pidiendo valores
+  calls.length = 0;
+  const lim = mk({ AAA: { Information: 'rate limit of 25 requests per day' }, BBB: daily({ '2026-10-27': { '4. close': '1' } }) });
+  const r2 = await fetchQuotes({ apiKey: 'K', base: 'EUR', gapMs: 0, fetchFn: lim, items: [{ id: '1', symbol: 'AAA', currency: 'EUR' }, { id: '2', symbol: 'BBB', currency: 'EUR' }] });
+  assert.equal(r2[0].error, 'rate-limit'); assert.equal(r2[1].error, 'rate-limit'); assert.equal(calls.length, 1);
+  // el cambio no disponible deja el valor sin actualizar en lugar de guardar un precio en dólares como si fueran euros
+  const nofx = mk({ AAPL: daily({ '2026-10-27': { '4. close': '200' } }), frankfurter: {} });
+  assert.equal((await fetchQuotes({ apiKey: 'K', base: 'EUR', gapMs: 0, fetchFn: nofx, items: [{ id: 'b', symbol: 'AAPL', currency: 'USD' }] }))[0].error, 'fx');
+  // vista previa: salto grande y fecha antigua quedan marcados
+  const pv = previewQuotes({ a: [{ date: '2026-10-20', price: 100 }], b: [{ date: '2026-10-28', price: 10 }], c: [] }, [{ id: 'a', ok: true, date: '2026-10-27', price: 160 }, { id: 'b', ok: true, date: '2026-10-27', price: 10.5 }, { id: 'c', ok: true, date: '2026-10-27', price: 5 }, { id: 'x', ok: false }]);
+  assert.equal(pv.length, 3); assert.equal(pv[0].suspicious, true); assert.equal(pv[1].stale, true); assert.equal(pv[2].changePct, null);
+  // los campos nuevos de un valor sobreviven a guardar y restaurar; los inválidos se descartan
+  const { normalizeState } = await import('./src/logic/state.ts');
+  const st = buildSeed(); st.securities = [{ ...st.securities[0], symbol: 'AIR:EPA', currency: 'USD', updatedAt: '2026-10-27T10:00:00.000Z' }, { ...st.securities[1], symbol: 5, currency: null }];
+  const n = normalizeState(JSON.parse(JSON.stringify(st)));
+  assert.ok(n.ok); assert.equal(n.state.securities[0].symbol, 'AIR:EPA'); assert.equal(n.state.securities[0].currency, 'USD'); assert.equal(n.state.securities[1].symbol, undefined);
+  assert.ok(!JSON.stringify(n.state).includes('apikey'), 'ninguna clave en el estado');
+}
+console.log('actualización de precios ok');
