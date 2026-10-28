@@ -5,7 +5,8 @@
   "description": "Finanzas personales con datos locales (PWA)",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --experimental-strip-types tests.mjs"
+    "test": "node --experimental-strip-types tests.mjs",
+    "typecheck": "tsc -p ."
   },
   "dependencies": {
     "d3-shape": "3.2.0",
@@ -14,7 +15,8 @@
     "react-icons": "5.7.0"
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3"
   },
   "type": "module"
 }
