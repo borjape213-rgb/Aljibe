@@ -15,8 +15,8 @@ import { deleteAccount, saveAccount, ValidationError } from '../actions.ts';
 
 const RANGES = [{ id: '1m', label: '1M', days: 30 }, { id: '3m', label: '3M', days: 91 }, { id: '6m', label: '6M', days: 182 }, { id: '1y', label: '1A', days: 365 }, { id: 'all', label: 'Todo', days: 399 }] as const;
 const RANGE_TEXT: Record<string, string> = { '1m': '1 mes', '3m': '3 meses', '6m': '6 meses', '1y': '1 año', all: 'todo el periodo' };
-type Tab = 'net' | 'cash' | 'investments' | 'assets';
-const TAB_GROUPS: Record<Tab, AccountGroup[]> = { net: GROUP_ORDER, cash: ['cash'], investments: ['investments'], assets: ['assets'] };
+type Tab = 'net' | 'cash' | 'investments' | 'lent' | 'assets';
+const TAB_GROUPS: Record<Tab, AccountGroup[]> = { net: GROUP_ORDER, cash: ['cash'], investments: ['investments'], lent: ['lent'], assets: ['assets'] };
 
 export function Accounts({ route }: { route: Route }) {
   const s = useData();
@@ -44,7 +44,7 @@ export function Accounts({ route }: { route: Route }) {
     <>
       <TopBar title="Cuentas" end={<IconButton label="Añadir cuenta" onClick={() => setAdding(true)}><LuPlus /></IconButton>} />
       <main>
-        <Tabs value={tab} onChange={(v) => setQuery('tab', v === 'net' ? null : v)} options={[{ id: 'net', label: 'Patrimonio' }, { id: 'cash', label: 'Efectivo' }, { id: 'investments', label: 'Inversiones' }, { id: 'assets', label: 'Bienes' }]} />
+        <Tabs value={tab} onChange={(v) => setQuery('tab', v === 'net' ? null : v)} options={[{ id: 'net', label: 'Patrimonio' }, { id: 'cash', label: 'Efectivo' }, { id: 'investments', label: 'Inversiones' }, { id: 'lent', label: 'Loans' }, { id: 'assets', label: 'Bienes' }]} />
         {s.accounts.length === 0 ? (
           <EmptyState icon={<LuLandmark size={32} aria-hidden="true" />} title="Aún no tienes cuentas" text="Empieza por una: tu cuenta corriente, una tarjeta o un bien. Tú pones el saldo y Aljibe hace el resto." action={<Button onClick={() => setAdding(true)}>Añadir cuenta</Button>} />
         ) : (

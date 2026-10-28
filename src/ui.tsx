@@ -68,7 +68,7 @@ export function Ranges<T extends string>({ value, onChange, options }: { value: 
   return <div className="ranges" role="group" aria-label="Periodo">{options.map((o) => <button key={o.id} aria-pressed={value === o.id} onClick={() => onChange(o.id)}>{o.label}</button>)}</div>;
 }
 export function Tabs<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { id: T; label: string }[] }) {
-  return <div className="tabs" role="tablist">{options.map((o) => <button key={o.id} role="tab" className="tab" aria-selected={value === o.id} onClick={() => onChange(o.id)}>{o.label}</button>)}</div>;
+  return <div className="tabs" role="tablist">{options.map((o) => <button key={o.id} role="tab" className="tab" aria-selected={value === o.id} ref={(el) => { const bar = el?.parentElement; if (el && bar && value === o.id) { const l = el.offsetLeft - bar.offsetLeft; if (l < bar.scrollLeft || l + el.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = l - 16; } }} onClick={() => onChange(o.id)}>{o.label}</button>)}</div>;
 }
 
 export function Field({ label, error, hint, children, id }: { label: string; error?: string | null; hint?: string; children: (p: { id: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string }) => React.ReactNode; id: string }) {
