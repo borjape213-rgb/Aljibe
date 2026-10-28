@@ -1,4 +1,4 @@
-"""Cuentas de inversión con subtipo Loans: solo saldo, sin movimientos ni posiciones.
+"""Tipo de cuenta Loans (subtipo Loans): solo saldo, sin movimientos ni posiciones.
 
 Uso (con el servidor en marcha: python3 -m http.server 8765 -d dist):
     python3 e2e_accounts.py [http://localhost:8765]
@@ -28,14 +28,14 @@ with sync_playwright() as p:
     pg.get_by_role('button', name='Añadir cuenta').click() if pg.get_by_role('button', name='Añadir cuenta').count() else pg.locator('button[aria-label*="cuenta" i]').first.click()
     pg.get_by_label('Nombre').fill('Préstamos P2P')
     pg.get_by_label('Tipo', exact=True).select_option(label='Inversiones')
-    check('con subtipo Fondos no pide saldo (sale de posiciones)', pg.get_by_text('sale de sus posiciones').first.is_visible())
-    pg.get_by_label('Subtipo').select_option('Loans')
-    check('con subtipo Loans pide el saldo', pg.get_by_label('Saldo (lo que te deben)').is_visible())
+    check('Inversiones no pide saldo (sale de posiciones) y no tiene subtipo Loans', pg.get_by_text('sale de sus posiciones').first.is_visible() and 'Loans' not in pg.get_by_label('Subtipo').locator('option').all_inner_texts())
+    pg.get_by_label('Tipo', exact=True).select_option(label='Loans')
+    check('el tipo Loans tiene subtipo Loans y pide el saldo', pg.get_by_label('Subtipo').input_value() == 'Loans' and pg.get_by_label('Saldo (lo que te deben)').is_visible())
     pg.get_by_label('Saldo (lo que te deben)').fill('2.500,00')
     pg.get_by_role('button', name='Guardar').click(); pg.wait_for_timeout(500)
     st = pg.evaluate(READ)
     acc = next(a for a in st['accounts'] if a['name'] == 'Préstamos P2P')
-    check('se guarda con el saldo indicado', acc['group'] == 'investments' and acc['subtype'] == 'Loans' and acc['balanceCents'] == 250000)
+    check('se guarda con el saldo indicado', acc['group'] == 'lent' and acc['subtype'] == 'Loans' and acc['balanceCents'] == 250000)
     pg.goto(U + '#/account/' + acc['id']); pg.wait_for_selector('text=Actualizar saldo')
     check('la ficha no muestra transacciones', pg.get_by_text('Transacciones', exact=True).count() == 0 and pg.get_by_text('Sin transacciones').count() == 0)
     check('la ficha no ofrece ver posiciones', pg.get_by_text('Ver posiciones').count() == 0)

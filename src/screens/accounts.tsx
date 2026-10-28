@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { LuPlus, LuEyeOff, LuLandmark, LuTrendingUp, LuBuilding, LuWallet, LuTrash2 } from 'react-icons/lu';
+import { LuPlus, LuEyeOff, LuLandmark, LuTrendingUp, LuBuilding, LuWallet, LuTrash2, LuHandCoins } from 'react-icons/lu';
 import type { Account, AccountGroup, State } from '../logic/types.ts';
 import type { Route } from '../router.tsx';
 import { go, setQuery } from '../router.tsx';
 import { useData } from '../store.ts';
-import { GROUP_LABEL, GROUP_ORDER, accountSeries, accountValueCents, changeOver, isManualInvestment, netWorthSeries } from '../logic/ledger.ts';
+import { GROUP_LABEL, GROUP_ORDER, accountSeries, accountValueCents, changeOver, netWorthSeries } from '../logic/ledger.ts';
 import { addDays, todayISO } from '../logic/dates.ts';
 import { parseCents } from '../logic/money.ts';
 import { Amount, Avatar, Banner, Button, Change, EmptyState, Field, IconButton, Ranges, Segmented, Sheet, Skeleton, Tabs, money, toast } from '../ui.tsx';
@@ -72,7 +72,7 @@ export function Accounts({ route }: { route: Route }) {
                   </div>
                   {accs.map((a, i) => (
                     <a key={a.id} className="row" href={`#/account/${a.id}`}>
-                      <Avatar name={a.name}>{g === 'investments' ? <LuTrendingUp /> : g === 'assets' ? <LuBuilding /> : undefined}</Avatar>
+                      <Avatar name={a.name}>{g === 'investments' ? <LuTrendingUp /> : g === 'lent' ? <LuHandCoins /> : g === 'assets' ? <LuBuilding /> : undefined}</Avatar>
                       <span className="grow"><span className="title">{a.name}</span><span className="xs muted">{a.subtype}</span></span>
                       <Sparkline values={gs[i].map((p) => p.cents)} width={48} />
                       <span className="end"><Amount cents={accountValueCents(s, a)} tone="none" liability={liab} /><br /><span className="xs muted">{relTime(a.updatedAt)}</span></span>
@@ -117,7 +117,7 @@ function Summary({ s, mode, setMode }: { s: State; mode: 'totals' | 'percent'; s
   );
 }
 
-const SUBTYPES: Record<AccountGroup, string[]> = { cash: ['Cuenta corriente', 'Ahorro', 'Efectivo'], credit: ['Tarjeta de crédito'], loans: ['Préstamo', 'Hipoteca'], investments: ['Fondos', 'Jubilación', 'Cripto', 'Loans'], assets: ['Inmueble', 'Vehículo', 'Otro bien'], other: ['Otra'] };
+const SUBTYPES: Record<AccountGroup, string[]> = { cash: ['Cuenta corriente', 'Ahorro', 'Efectivo'], credit: ['Tarjeta de crédito'], loans: ['Préstamo', 'Hipoteca'], investments: ['Fondos', 'Jubilación', 'Cripto'], lent: ['Loans'], assets: ['Inmueble', 'Vehículo', 'Otro bien'], other: ['Otra'] };
 export function AccountForm({ onClose, account }: { onClose: () => void; account?: Account }) {
   const [name, setName] = useState(account?.name ?? '');
   const [group, setGroup] = useState<AccountGroup>(account?.group ?? 'cash');
@@ -127,8 +127,8 @@ export function AccountForm({ onClose, account }: { onClose: () => void; account
   const [err, setErr] = useState<{ name?: string; bal?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const liab = group === 'credit' || group === 'loans';
-  const manual = isManualInvestment({ group, subtype });
-  const byHoldings = group === 'investments' && !manual;
+  const manual = group === 'lent';
+  const byHoldings = group === 'investments';
   const submit = async () => {
     const e: { name?: string; bal?: string } = {};
     if (!name.trim()) e.name = 'Escribe un nombre para la cuenta.';
@@ -172,7 +172,7 @@ export function AccountDetail({ id, route }: { id: string; route: Route }) {
   const ch = changeOver(series.map((p) => ({ cents: p.value })));
   const txs = s.transactions.filter((t) => t.accountId === a.id).slice(0, 40);
   const liab = a.group === 'credit' || a.group === 'loans';
-  const manual = isManualInvestment(a);
+  const manual = a.group === 'lent';
   return (
     <>
       <TopBar title={a.name} back="/accounts" end={<Button variant="ghost" onClick={() => setEdit(true)}>Editar</Button>} />
@@ -186,7 +186,7 @@ export function AccountDetail({ id, route }: { id: string; route: Route }) {
           <p className="xs muted" style={{ textAlign: 'center' }}>Actualizada {relTime(a.updatedAt)} · manual</p>
         </section>
         {manual ? <Button variant="secondary" onClick={() => setEdit(true)}>Actualizar saldo</Button> : null}
-        {a.group === 'investments' && !manual ? <a className="btn secondary" href="#/investments">Ver posiciones</a> : null}
+        {a.group === 'investments' ? <a className="btn secondary" href="#/investments">Ver posiciones</a> : null}
         {manual ? null : <h2 className="sm b6" style={{ margin: '4px 4px 0' }}>Transacciones</h2>}
         {manual ? null : txs.length === 0 ? <EmptyState title="Sin transacciones" text={a.group === 'assets' ? 'Los bienes se valoran a mano: edita la cuenta para guardar una nueva valoración.' : 'Esta cuenta no tiene movimientos todavía.'} /> : <DayGroups items={txs} s={s} />}
         <Button variant="danger" onClick={() => setConfirm(true)}><LuTrash2 aria-hidden="true" size={18} />Borrar cuenta</Button>

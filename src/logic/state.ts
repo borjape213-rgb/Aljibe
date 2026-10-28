@@ -9,7 +9,7 @@ const str = (x: unknown) => typeof x === 'string';
 const int = (x: unknown): x is number => typeof x === 'number' && Number.isInteger(x);
 const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
-const ACCOUNT_GROUPS = ['cash', 'credit', 'loans', 'investments', 'assets', 'other'];
+const ACCOUNT_GROUPS = ['cash', 'credit', 'loans', 'investments', 'lent', 'assets', 'other'];
 const GROUP_KINDS = ['income', 'expense', 'transfer'];
 const BUCKETS = ['fixed', 'nonmonthly', 'flexible'];
 
@@ -31,7 +31,9 @@ function account(x: unknown, i: number): Account {
   need(str(a.group) && ACCOUNT_GROUPS.includes(a.group as string), `Cuenta «${a.name}»: tipo no válido.`);
   need(int(a.balanceCents), `Cuenta «${a.name}»: saldo no válido.`);
   if (a.valuations !== undefined) need(Array.isArray(a.valuations) && (a.valuations as unknown[]).every((v) => isObj(v) && str(v.date) && int(v.cents)), `Cuenta «${a.name}»: valoraciones no válidas.`);
-  return { ...(a as unknown as Account), subtype: str(a.subtype) ? (a.subtype as string) : '', currency: str(a.currency) ? (a.currency as string) : 'EUR', hidden: a.hidden === true, updatedAt: str(a.updatedAt) ? (a.updatedAt as string) : new Date().toISOString().slice(0, 19) };
+  // Versión intermedia: «Loans» fue un subtipo de Inversiones; ahora es un tipo de cuenta propio.
+  const group = a.group === 'investments' && a.subtype === 'Loans' ? 'lent' : a.group;
+  return { ...(a as unknown as Account), group: group as Account['group'], subtype: str(a.subtype) ? (a.subtype as string) : '', currency: str(a.currency) ? (a.currency as string) : 'EUR', hidden: a.hidden === true, updatedAt: str(a.updatedAt) ? (a.updatedAt as string) : new Date().toISOString().slice(0, 19) };
 }
 
 function transaction(x: unknown, i: number): Transaction {

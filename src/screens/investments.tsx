@@ -5,7 +5,7 @@ import { setQuery } from '../router.tsx';
 import { useData } from '../store.ts';
 import { RANGES, allocation, holdingRows, pctSeries, portfolioPctSeries, portfolioReturn, CLASS_LABEL } from '../logic/invest.ts';
 import { addDays, todayISO } from '../logic/dates.ts';
-import { isManualInvestment, priceLookup } from '../logic/ledger.ts';
+import { priceLookup } from '../logic/ledger.ts';
 import { parseCents } from '../logic/money.ts';
 import type { AssetClass } from '../logic/types.ts';
 import { Amount, Banner, Button, Change, EmptyState, Field, IconButton, Ranges, Segmented, Sheet, money, toast } from '../ui.tsx';
@@ -31,7 +31,7 @@ export function Investments({ route }: { route: Route }) {
   const bs = s.benchmarks.find((b) => b.id === bench);
   const bser = useMemo(() => (bs ? pctSeries(bs.series, days) : []), [bs, days]);
   const al = useMemo(() => allocation(rows), [rows]);
-  const invAccounts = s.accounts.filter((a) => a.group === 'investments' && !isManualInvestment(a));
+  const invAccounts = s.accounts.filter((a) => a.group === 'investments');
   return (
     <>
       <TopBar title="Inversiones" end={<IconButton label="Añadir posición" onClick={() => setAdding(true)}><LuPlus /></IconButton>} />
@@ -90,7 +90,7 @@ export function Investments({ route }: { route: Route }) {
 
 function HoldingForm({ onClose, securityId }: { onClose: () => void; securityId?: string }) {
   const s = useData();
-  const accounts = s.accounts.filter((a) => a.group === 'investments' && !isManualInvestment(a));
+  const accounts = s.accounts.filter((a) => a.group === 'investments');
   const [account, setAccount] = useState(accounts[0]?.id ?? '');
   const [sec, setSec] = useState(securityId ?? s.securities[0]?.id ?? '__new');
   const [qty, setQty] = useState('');

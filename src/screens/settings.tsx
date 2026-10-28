@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasNoMovements } from '../logic/ledger.ts';
 import { LuChevronRight, LuTrash2, LuPlus, LuDownload, LuUpload, LuArrowUp, LuArrowDown } from 'react-icons/lu';
 import { BAR_SLOTS, DESTS, WIDGET_NAMES, navOrder, widgetOrder } from '../nav.ts';
 import { parseXLSX } from '../logic/xlsx.ts';
@@ -148,7 +149,7 @@ function DataScreen() {
         <section className="card pad form" aria-label="Importar CSV">
           <h2>Importar desde CSV o Excel</h2>
           <p className="hint">Archivo .csv, .xls o .xlsx (se lee la primera hoja). Se busca la fila de encabezados aunque haya filas de titular o saldo encima: fecha, concepto e importe (o débito y crédito). Fechas día/mes/año, AAAA-MM-DD o fechas de Excel. Importar dos veces el mismo archivo no duplica nada.</p>
-          <Field id="ia" label="Cuenta de destino">{(p) => <select {...p} className="input" value={acc} onChange={(e) => setAcc(e.target.value)}>{s.accounts.filter((a) => a.group !== 'investments').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</Field>
+          <Field id="ia" label="Cuenta de destino">{(p) => <select {...p} className="input" value={acc} onChange={(e) => setAcc(e.target.value)}>{s.accounts.filter((a) => !hasNoMovements(a)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</Field>
           <input ref={file} type="file" accept=".csv,.xlsx,.xls,application/vnd.ms-excel,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr" aria-label="Elegir archivo CSV o Excel" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void onCsv(f); }} />
           <Button variant="secondary" onClick={() => file.current?.click()} disabled={!acc}><LuUpload aria-hidden="true" size={18} />Elegir archivo</Button>
           {csv?.error ? <Banner tone="bad">{csv.error}</Banner> : null}

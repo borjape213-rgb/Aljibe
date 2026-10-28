@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { hasNoMovements } from '../logic/ledger.ts';
 import { LuPlus, LuSearch, LuListFilter, LuCheck, LuSplit, LuEyeOff, LuTrash2, LuX } from 'react-icons/lu';
 import type { Id, Split, State } from '../logic/types.ts';
 import { go, setQuery, type Route } from '../router.tsx';
@@ -112,7 +113,7 @@ function TxForm({ s, onClose }: { s: State; onClose: () => void }) {
         <Field id="tm" label="Comerciante" error={err.merchant}>{(p) => <input {...p} className="input" value={merchant} onChange={(e) => setMerchant(e.target.value)} autoFocus maxLength={120} />}</Field>
         <Field id="ta" label="Importe" error={err.amount}>{(p) => <input {...p} className="input num" inputMode="decimal" value={amount} placeholder="0,00" onChange={(e) => setAmount(e.target.value)} />}</Field>
         <Field id="td" label="Fecha" error={err.date}>{(p) => <input {...p} className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />}</Field>
-        <Field id="tc" label="Cuenta">{(p) => <select {...p} className="input" value={account} onChange={(e) => setAccount(e.target.value)}>{s.accounts.filter((a) => a.group !== 'investments').map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</Field>
+        <Field id="tc" label="Cuenta">{(p) => <select {...p} className="input" value={account} onChange={(e) => setAccount(e.target.value)}>{s.accounts.filter((a) => !hasNoMovements(a)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</Field>
         <Field id="tg" label="Categoría">{() => <CategoryPicker s={s} value={category} onChange={setCategory} kind={kind} />}</Field>
         <div className="btnrow"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit">Guardar</Button></div>
       </form>

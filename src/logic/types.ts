@@ -1,5 +1,5 @@
 export type Id = string;
-export type AccountGroup = 'cash' | 'credit' | 'loans' | 'investments' | 'assets' | 'other';
+export type AccountGroup = 'cash' | 'credit' | 'loans' | 'investments' | 'lent' | 'assets' | 'other';
 
 export interface Account {
   id: Id;

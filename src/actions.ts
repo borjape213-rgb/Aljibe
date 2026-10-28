@@ -1,5 +1,5 @@
 import type { Account, Id, RecurringStream, Split, State, Transaction } from './logic/types.ts';
-import { isManualInvestment } from './logic/ledger.ts';
+import { hasNoMovements, isValuedByHand } from './logic/ledger.ts';
 import { getState, mutate, setState, freshSeed, emptyState, dropLegacyReview, savePreviousCopy, loadPreviousCopy } from './store.ts';
 import { countsOf, normalizeState } from './logic/state.ts';
 import { applyRules, planImport, type ImportRow } from './logic/importer.ts';
@@ -18,7 +18,7 @@ export async function createTransaction(input: { accountId: Id; date: string; am
   const ruled = applyRules(s.rules, { merchant: input.merchant.trim(), categoryId: input.categoryId });
   const t: Transaction = { id: uid('t'), accountId: input.accountId, date: input.date, amountCents: input.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId, notes: input.notes ?? '', tags: [], hidden: false, splits: [] };
   const acc = s.accounts.find((a) => a.id === input.accountId);
-  mutate((st) => ({ ...st, transactions: [t, ...st.transactions].sort(byDateDesc), accounts: st.accounts.map((a) => (a.id === input.accountId && a.group !== 'investments' ? { ...a, balanceCents: a.balanceCents + t.amountCents } : a)) }));
+  mutate((st) => ({ ...st, transactions: [t, ...st.transactions].sort(byDateDesc), accounts: st.accounts.map((a) => (a.id === input.accountId && !hasNoMovements(a) ? { ...a, balanceCents: a.balanceCents + t.amountCents } : a)) }));
   void acc;
   return t;
 }
@@ -61,7 +61,7 @@ export async function setSplits(id: Id, splits: Split[]): Promise<void> {
 export async function deleteTransaction(id: Id): Promise<void> {
   const t = getState().transactions.find((x) => x.id === id);
   if (!t) return;
-  mutate((s) => ({ ...s, transactions: s.transactions.filter((x) => x.id !== id), accounts: s.accounts.map((a) => (a.id === t.accountId && a.group !== 'investments' ? { ...a, balanceCents: a.balanceCents - t.amountCents } : a)) }));
+  mutate((s) => ({ ...s, transactions: s.transactions.filter((x) => x.id !== id), accounts: s.accounts.map((a) => (a.id === t.accountId && !hasNoMovements(a) ? { ...a, balanceCents: a.balanceCents - t.amountCents } : a)) }));
 }
 
 export async function setBudget(categoryId: Id, month: string, amountCents: number, applyForward = false): Promise<void> {
@@ -87,7 +87,7 @@ export async function saveAccount(a: Omit<Account, 'id' | 'updatedAt'> & { id?: 
   mutate((s) => {
     const full: Account = { ...a, id, updatedAt: now, name: a.name.trim() };
     const exists = s.accounts.some((x) => x.id === id);
-    return { ...s, accounts: exists ? s.accounts.map((x) => (x.id === id ? { ...x, ...full, valuations: x.group === 'assets' || isManualInvestment(full) ? [...(x.valuations ?? []).filter((v) => v.date !== now.slice(0, 10)), { date: now.slice(0, 10), cents: full.balanceCents }] : x.valuations } : x)) : [...s.accounts, { ...full, valuations: full.group === 'assets' || isManualInvestment(full) ? [{ date: now.slice(0, 10), cents: full.balanceCents }] : undefined }] };
+    return { ...s, accounts: exists ? s.accounts.map((x) => (x.id === id ? { ...x, ...full, valuations: isValuedByHand(full) ? [...(x.valuations ?? []).filter((v) => v.date !== now.slice(0, 10)), { date: now.slice(0, 10), cents: full.balanceCents }] : x.valuations } : x)) : [...s.accounts, { ...full, valuations: isValuedByHand(full) ? [{ date: now.slice(0, 10), cents: full.balanceCents }] : undefined }] };
   });
   return id;
 }
@@ -116,7 +116,7 @@ export async function importRows(accountId: Id, rows: ImportRow[], opts: { setBa
     categories: [...st.categories, ...sugg.created.filter((c) => !st.categories.some((x) => x.id === c.id))],
     settings: opts.holder ? { ...st.settings, holder: opts.holder } : st.settings,
     transactions: [...news, ...st.transactions].sort(byDateDesc),
-    accounts: st.accounts.map((a) => (a.id === accountId && a.group !== 'investments' ? { ...a, balanceCents: setBalance !== undefined ? setBalance : a.balanceCents + delta, updatedAt: setBalance !== undefined ? new Date().toISOString().slice(0, 19) : a.updatedAt } : a)),
+    accounts: st.accounts.map((a) => (a.id === accountId && !hasNoMovements(a) ? { ...a, balanceCents: setBalance !== undefined ? setBalance : a.balanceCents + delta, updatedAt: setBalance !== undefined ? new Date().toISOString().slice(0, 19) : a.updatedAt } : a)),
   }));
   return { added: news.length, skipped, categorized: news.filter((t) => t.categoryId !== 'c-none').length, balanceSet: setBalance !== undefined };
 }

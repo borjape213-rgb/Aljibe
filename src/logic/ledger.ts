@@ -51,9 +51,11 @@ export function holdingValueCents(s: State, h: { securityId: Id; quantity: numbe
   return Math.round(h.quantity * f(date) * 100);
 }
 
-/** Cuenta de inversión sin posiciones ni movimientos (préstamos que has concedido): solo se apunta su saldo a mano. */
-export const isManualInvestment = (a: Pick<Account, 'group' | 'subtype'>) => a.group === 'investments' && a.subtype === 'Loans';
-const valuedByHoldings = (a: Account) => a.group === 'investments' && !isManualInvestment(a);
+/** Tipo «Loans» (dinero que has prestado) y bienes: sin movimientos, el saldo o valor se apunta a mano y queda en un histórico. */
+export const isValuedByHand = (a: Pick<Account, 'group'>) => a.group === 'lent' || a.group === 'assets';
+/** Tipos de cuenta que no llevan movimientos (el saldo no sale de transacciones). */
+export const hasNoMovements = (a: Pick<Account, 'group'>) => a.group === 'investments' || a.group === 'lent';
+const valuedByHoldings = (a: Account) => a.group === 'investments';
 
 export function accountValueCents(s: State, a: Account, date = todayISO()): number {
   if (valuedByHoldings(a)) return s.holdings.filter((h) => h.accountId === a.id).reduce((n, h) => n + holdingValueCents(s, h, date), 0);
@@ -119,9 +121,9 @@ export function netWorthSeries(s: State, from: string, to: string, includeHidden
 const ser0 = (series: { date: string }[][], i: number) => series[0][i].date;
 
 export const GROUP_LABEL: Record<Account['group'], string> = {
-  cash: 'Efectivo', credit: 'Tarjetas de crédito', loans: 'Préstamos', investments: 'Inversiones', assets: 'Bienes', other: 'Otras',
+  cash: 'Efectivo', credit: 'Tarjetas de crédito', loans: 'Préstamos', investments: 'Inversiones', lent: 'Loans', assets: 'Bienes', other: 'Otras',
 };
-export const GROUP_ORDER: Account['group'][] = ['cash', 'investments', 'assets', 'credit', 'loans', 'other'];
+export const GROUP_ORDER: Account['group'][] = ['cash', 'investments', 'lent', 'assets', 'credit', 'loans', 'other'];
 
 export function changeOver(series: { cents?: number; net?: number }[]): { delta: number; pct: number } {
   if (series.length < 2) return { delta: 0, pct: 0 };
