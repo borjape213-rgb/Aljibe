@@ -51,8 +51,12 @@ export function holdingValueCents(s: State, h: { securityId: Id; quantity: numbe
   return Math.round(h.quantity * f(date) * 100);
 }
 
+/** Cuenta de inversión sin posiciones ni movimientos (préstamos que has concedido): solo se apunta su saldo a mano. */
+export const isManualInvestment = (a: Pick<Account, 'group' | 'subtype'>) => a.group === 'investments' && a.subtype === 'Loans';
+const valuedByHoldings = (a: Account) => a.group === 'investments' && !isManualInvestment(a);
+
 export function accountValueCents(s: State, a: Account, date = todayISO()): number {
-  if (a.group === 'investments') return s.holdings.filter((h) => h.accountId === a.id).reduce((n, h) => n + holdingValueCents(s, h, date), 0);
+  if (valuedByHoldings(a)) return s.holdings.filter((h) => h.accountId === a.id).reduce((n, h) => n + holdingValueCents(s, h, date), 0);
   return a.balanceCents;
 }
 
@@ -61,7 +65,7 @@ export function accountSeries(s: State, a: Account, from: string, to: string): {
   const days = daysBetween(from, to);
   const out: { date: string; cents: number }[] = [];
   if (days < 0) return out;
-  if (a.group === 'investments') {
+  if (valuedByHoldings(a)) {
     const lookups = new Map<Id, (d: string) => number>();
     const hs = s.holdings.filter((h) => h.accountId === a.id);
     for (let i = 0; i <= days; i++) {

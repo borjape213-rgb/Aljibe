@@ -349,3 +349,18 @@ console.log('extracto tipo Sabadell ok');
   assert.ok(!JSON.stringify(n.state).includes('apikey'), 'ninguna clave en el estado');
 }
 console.log('actualización de precios ok');
+
+// cuenta de inversión con subtipo Loans: sin posiciones ni movimientos, vale lo que se apunta a mano
+{
+  const { isManualInvestment } = await import('./src/logic/ledger.ts');
+  const st = buildSeed();
+  const loan = { id: 'a-ln', name: 'Préstamos concedidos', group: 'investments', subtype: 'Loans', balanceCents: 250000, currency: 'EUR', hidden: false, updatedAt: '2026-10-28T10:00:00', valuations: [{ date: '2026-01-01', cents: 100000 }, { date: '2026-09-01', cents: 250000 }] };
+  st.accounts = [...st.accounts, loan];
+  assert.ok(isManualInvestment(loan)); assert.ok(!isManualInvestment({ group: 'investments', subtype: 'Fondos' })); assert.ok(!isManualInvestment({ group: 'cash', subtype: 'Loans' }));
+  assert.equal(accountValueCents(st, loan), 250000, 'vale su saldo, no la suma de posiciones');
+  const ser = accountSeries(st, loan, '2026-08-30', '2026-09-02');
+  assert.deepEqual(ser.map((p) => p.cents), [100000, 100000, 250000, 250000], 'el histórico sale de las valoraciones guardadas');
+  const nw0 = netWorthSeries(buildSeed(), addDays(today, -1), today).at(-1).net, nw1 = netWorthSeries(st, addDays(today, -1), today).at(-1).net;
+  assert.equal(nw1 - nw0, 250000, 'suma al patrimonio');
+}
+console.log('cuentas Loans ok');

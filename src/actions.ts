@@ -1,4 +1,5 @@
 import type { Account, Id, RecurringStream, Split, State, Transaction } from './logic/types.ts';
+import { isManualInvestment } from './logic/ledger.ts';
 import { getState, mutate, setState, freshSeed, emptyState, dropLegacyReview, savePreviousCopy, loadPreviousCopy } from './store.ts';
 import { countsOf, normalizeState } from './logic/state.ts';
 import { applyRules, planImport, type ImportRow } from './logic/importer.ts';
@@ -86,7 +87,7 @@ export async function saveAccount(a: Omit<Account, 'id' | 'updatedAt'> & { id?: 
   mutate((s) => {
     const full: Account = { ...a, id, updatedAt: now, name: a.name.trim() };
     const exists = s.accounts.some((x) => x.id === id);
-    return { ...s, accounts: exists ? s.accounts.map((x) => (x.id === id ? { ...x, ...full, valuations: x.group === 'assets' ? [...(x.valuations ?? []).filter((v) => v.date !== now.slice(0, 10)), { date: now.slice(0, 10), cents: full.balanceCents }] : x.valuations } : x)) : [...s.accounts, { ...full, valuations: full.group === 'assets' ? [{ date: now.slice(0, 10), cents: full.balanceCents }] : undefined }] };
+    return { ...s, accounts: exists ? s.accounts.map((x) => (x.id === id ? { ...x, ...full, valuations: x.group === 'assets' || isManualInvestment(full) ? [...(x.valuations ?? []).filter((v) => v.date !== now.slice(0, 10)), { date: now.slice(0, 10), cents: full.balanceCents }] : x.valuations } : x)) : [...s.accounts, { ...full, valuations: full.group === 'assets' || isManualInvestment(full) ? [{ date: now.slice(0, 10), cents: full.balanceCents }] : undefined }] };
   });
   return id;
 }

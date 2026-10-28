@@ -4,7 +4,7 @@ import type { Account, AccountGroup, State } from '../logic/types.ts';
 import type { Route } from '../router.tsx';
 import { go, setQuery } from '../router.tsx';
 import { useData } from '../store.ts';
-import { GROUP_LABEL, GROUP_ORDER, accountSeries, accountValueCents, changeOver, netWorthSeries } from '../logic/ledger.ts';
+import { GROUP_LABEL, GROUP_ORDER, accountSeries, accountValueCents, changeOver, isManualInvestment, netWorthSeries } from '../logic/ledger.ts';
 import { addDays, todayISO } from '../logic/dates.ts';
 import { parseCents } from '../logic/money.ts';
 import { Amount, Avatar, Banner, Button, Change, EmptyState, Field, IconButton, Ranges, Segmented, Sheet, Skeleton, Tabs, money, toast } from '../ui.tsx';
@@ -127,15 +127,17 @@ export function AccountForm({ onClose, account }: { onClose: () => void; account
   const [err, setErr] = useState<{ name?: string; bal?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const liab = group === 'credit' || group === 'loans';
+  const manual = isManualInvestment({ group, subtype });
+  const byHoldings = group === 'investments' && !manual;
   const submit = async () => {
     const e: { name?: string; bal?: string } = {};
     if (!name.trim()) e.name = 'Escribe un nombre para la cuenta.';
-    const c = bal.trim() === '' && group !== 'investments' ? null : parseCents(bal || '0');
+    const c = bal.trim() === '' && !byHoldings ? null : parseCents(bal || '0');
     if (c === null) e.bal = 'Escribe un importe válido, por ejemplo 1.250,00.';
     if (e.name || e.bal) return setErr(e);
     setBusy(true);
     try {
-      await saveAccount({ id: account?.id, name, group, subtype, balanceCents: group === 'investments' ? 0 : liab ? -Math.abs(c ?? 0) : c ?? 0, currency: account?.currency ?? 'EUR', hidden, valuations: account?.valuations });
+      await saveAccount({ id: account?.id, name, group, subtype, balanceCents: byHoldings ? 0 : liab ? -Math.abs(c ?? 0) : c ?? 0, currency: account?.currency ?? 'EUR', hidden, valuations: account?.valuations });
       toast(account ? 'Cuenta actualizada' : 'Cuenta creada');
       onClose();
     } catch (x) { setErr({ name: x instanceof ValidationError ? x.message : 'No se ha podido guardar.' }); } finally { setBusy(false); }
@@ -146,8 +148,8 @@ export function AccountForm({ onClose, account }: { onClose: () => void; account
         <Field id="an" label="Nombre" error={err?.name}>{(p) => <input {...p} className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} autoFocus />}</Field>
         <Field id="ag" label="Tipo">{(p) => <select {...p} className="input" value={group} disabled={!!account} onChange={(e) => { const g = e.target.value as AccountGroup; setGroup(g); setSubtype(SUBTYPES[g][0]); }}>{(Object.keys(GROUP_LABEL) as AccountGroup[]).map((g) => <option key={g} value={g}>{GROUP_LABEL[g]}</option>)}</select>}</Field>
         <Field id="as" label="Subtipo">{(p) => <select {...p} className="input" value={subtype} onChange={(e) => setSubtype(e.target.value)}>{SUBTYPES[group].map((x) => <option key={x}>{x}</option>)}</select>}</Field>
-        {group === 'investments' ? <p className="hint">El valor de una cuenta de inversión sale de sus posiciones. Añádelas en Inversiones.</p> : (
-          <Field id="ab" label={liab ? 'Cantidad que debes' : 'Saldo actual'} error={err?.bal} hint={liab ? 'Escríbela en positivo; se guarda como deuda.' : undefined}>{(p) => <input {...p} className="input num" inputMode="decimal" value={bal} placeholder="0,00" onChange={(e) => setBal(e.target.value)} />}</Field>
+        {byHoldings ? <p className="hint">El valor de una cuenta de inversión sale de sus posiciones. Añádelas en Inversiones.</p> : (
+          <Field id="ab" label={liab ? 'Cantidad que debes' : manual ? 'Saldo (lo que te deben)' : 'Saldo actual'} error={err?.bal} hint={liab ? 'Escríbela en positivo; se guarda como deuda.' : undefined}>{(p) => <input {...p} className="input num" inputMode="decimal" value={bal} placeholder="0,00" onChange={(e) => setBal(e.target.value)} />}</Field>
         )}
         <label style={{ display: 'flex', gap: 12, alignItems: 'center', minHeight: 48 }}><input type="checkbox" style={{ width: 22, height: 22 }} checked={hidden} onChange={(e) => setHidden(e.target.checked)} />Ocultar de los totales y del patrimonio</label>
         <div className="btnrow"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" disabled={busy}>Guardar</Button></div>
@@ -170,6 +172,7 @@ export function AccountDetail({ id, route }: { id: string; route: Route }) {
   const ch = changeOver(series.map((p) => ({ cents: p.value })));
   const txs = s.transactions.filter((t) => t.accountId === a.id).slice(0, 40);
   const liab = a.group === 'credit' || a.group === 'loans';
+  const manual = isManualInvestment(a);
   return (
     <>
       <TopBar title={a.name} back="/accounts" end={<Button variant="ghost" onClick={() => setEdit(true)}>Editar</Button>} />
@@ -182,9 +185,10 @@ export function AccountDetail({ id, route }: { id: string; route: Route }) {
           <Ranges value={rangeId as 'all'} onChange={(v) => setQuery('range', v === '3m' ? null : v)} options={RANGES.map((r) => ({ id: r.id, label: r.label }))} />
           <p className="xs muted" style={{ textAlign: 'center' }}>Actualizada {relTime(a.updatedAt)} · manual</p>
         </section>
-        {a.group === 'investments' ? <a className="btn secondary" href="#/investments">Ver posiciones</a> : null}
-        <h2 className="sm b6" style={{ margin: '4px 4px 0' }}>Transacciones</h2>
-        {txs.length === 0 ? <EmptyState title="Sin transacciones" text={a.group === 'assets' ? 'Los bienes se valoran a mano: edita la cuenta para guardar una nueva valoración.' : 'Esta cuenta no tiene movimientos todavía.'} /> : <DayGroups items={txs} s={s} />}
+        {manual ? <Button variant="secondary" onClick={() => setEdit(true)}>Actualizar saldo</Button> : null}
+        {a.group === 'investments' && !manual ? <a className="btn secondary" href="#/investments">Ver posiciones</a> : null}
+        {manual ? null : <h2 className="sm b6" style={{ margin: '4px 4px 0' }}>Transacciones</h2>}
+        {manual ? null : txs.length === 0 ? <EmptyState title="Sin transacciones" text={a.group === 'assets' ? 'Los bienes se valoran a mano: edita la cuenta para guardar una nueva valoración.' : 'Esta cuenta no tiene movimientos todavía.'} /> : <DayGroups items={txs} s={s} />}
         <Button variant="danger" onClick={() => setConfirm(true)}><LuTrash2 aria-hidden="true" size={18} />Borrar cuenta</Button>
       </main>
       {edit ? <AccountForm account={a} onClose={() => setEdit(false)} /> : null}
