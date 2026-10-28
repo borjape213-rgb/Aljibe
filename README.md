@@ -5,7 +5,7 @@ Finanzas personales con los datos en tu móvil (IndexedDB). Sin cuenta, sin serv
 ## Uso
 
 - Primer arranque: vacío, con una guía de tres pasos. Añade `?demo=1` a la dirección la primera vez para cargar datos de ejemplo (o usa el botón de la guía).
-- Importar: Ajustes, Datos y copia. Acepta `.csv` y `.xlsx` (primera hoja) con encabezados de fecha, concepto e importe (o débito y crédito). Importar el mismo archivo dos veces no duplica movimientos.
+- Importar: Ajustes, Datos y copia. Acepta `.csv` y `.xlsx` (primera hoja) con encabezados de fecha, concepto e importe (o débito y crédito). Si hay fecha operativa y fecha valor, usa la operativa. Lee titular y saldo del encabezado del extracto (probado con el formato de Banc Sabadell). Importar el mismo archivo dos veces no duplica movimientos.
 - Copia de seguridad: descarga el JSON desde Ajustes. Hay un aviso en Inicio a los 30 días.
 
 ## Desarrollo

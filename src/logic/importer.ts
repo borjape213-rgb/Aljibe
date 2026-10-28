@@ -62,7 +62,8 @@ export interface Mapping { date: number; merchant: number; amount: number | null
 /** Adivina columnas por el encabezado. Devuelve null si no encuentra fecha, descripción e importe. */
 export function guessMapping(header: string[]): Mapping | null {
   const find = (re: RegExp) => header.findIndex((h) => re.test(h.trim().toLowerCase()));
-  const date = find(/fecha|date/), merchant = find(/concepto|descripci|comercio|merchant|description|detalle/);
+  // La fecha del movimiento manda sobre la de valor (Sabadell: "F. Operativa" y "F. Valor").
+  const date = [/f\.?\s*oper|fecha\s*(de\s*)?oper|fecha\s*(de\s*)?(contab|movimiento)/, /fecha|date|^f\./].map(find).find((i) => i >= 0) ?? -1, merchant = find(/concepto|descripci|comercio|merchant|description|detalle/);
   const amount = find(/^importe|amount|cantidad/), debit = find(/d[eé]bito|cargo|gasto|debit/), credit = find(/cr[eé]dito|abono|ingreso|credit/);
   if (date < 0 || merchant < 0 || (amount < 0 && (debit < 0 || credit < 0))) return null;
   return { date, merchant, amount: amount >= 0 ? amount : null, debit: debit >= 0 ? debit : null, credit: credit >= 0 ? credit : null };
@@ -136,8 +137,13 @@ export function statementInfo(rows: string[][], headerIndex: number, map: Mappin
   const num = (x: string | undefined) => (x ? parseCents(x.replace(/[A-Za-z€$£]/g, '').trim()) : null);
   for (let r = 0; r < headerIndex; r++) {
     for (let c = 0; c < rows[r].length; c++) {
-      const cell = (rows[r][c] ?? '').trim().toLowerCase();
-      if (cell === 'titular' && !info.holder) { const h = (rows[r + 1]?.[c] ?? '').trim(); if (h && r + 1 < headerIndex) info.holder = h; }
+      const cell = (rows[r][c] ?? '').trim().toLowerCase().replace(/\s*:$/, '');
+      if (cell === 'titular' && !info.holder) {
+        // Unos bancos ponen el nombre debajo de "Titular", otros en la celda de al lado ("Titular:" | nombre).
+        const side = (rows[r][c + 1] ?? '').trim(), below = r + 1 < headerIndex ? (rows[r + 1]?.[c] ?? '').trim() : '';
+        const h = /:\s*$/.test((rows[r][c] ?? '').trim()) ? (side || below) : (below || side);
+        if (h) info.holder = h;
+      }
       if (/^saldo\b/.test(cell) && info.balanceCents === undefined) {
         const v = (r + 1 < headerIndex ? num(rows[r + 1]?.[c]) : null) ?? num(rows[r][c + 1]);
         if (v !== null && v !== undefined) info.balanceCents = v;

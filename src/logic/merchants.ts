@@ -29,7 +29,7 @@ function splitConcept(t: string): { head: string; concept: string } {
 
 /** Descompone el texto que pone el banco en tipo, nombre estable, parte implicada y concepto. */
 export function parseMerchant(raw: string): Parsed {
-  let t = plain(raw).replace(/\d{1,2}\/\d{1,2}\/\d{4}/g, ' ');
+  let t = plain(raw).replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, ' ').replace(/\s+n[º°o]?\.?\s*\d*\s*$/, '');
   let kind: Kind = 'other';
   const people: [RegExp, Kind][] = [
     [/^bizum de /, 'bizum-in'], [/^bizum a favor de /, 'bizum-out'],
@@ -87,6 +87,8 @@ const SPEC = {
   care: { id: 'c-care', name: 'Cuidado personal', groupId: 'g-life' },
   cash: { id: 'c-cash', name: 'Efectivo', groupId: 'g-life' },
   pharmacy: { id: 'c-pharmacy', name: 'Farmacia y salud', groupId: 'g-health' },
+  loan: { id: 'c-loan', name: 'Préstamos', groupId: 'g-bills' },
+  fees: { id: 'c-fees', name: 'Comisiones bancarias', groupId: 'g-bills' },
   insurance: { id: 'c-insurance', name: 'Seguros', groupId: 'g-yearly' },
   taxes: { id: 'c-taxes', name: 'Impuestos y tasas', groupId: 'g-yearly' },
   transfer: { id: 'c-transfer', name: 'Traspaso', groupId: 'g-transfer' },
@@ -97,6 +99,8 @@ type SpecKey = keyof typeof SPEC;
 const DICTIONARY: [RegExp, SpecKey][] = [
   [/\b(nomina|salario|payroll)\b/, 'salary'],
   [/\b(traspaso propio|traspaso|retirada inversion|mintos|degiro|trade republic|myinvestor|indexa|interactive brokers|bitstamp|coinbase|binance|kraken)\b/, 'transfer'],
+  [/\b(prestamos?|cuota (de )?prestamo|adeudo cuota|amortizacion)\b/, 'loan'],
+  [/\b(comision|comisiones|intereses|bonific\w*)\b/, 'fees'],
   [/\b(reintegro|cajero|disposicion)\b/, 'cash'],
   [/\b(spotify|netflix|hbo|disney|prime video|primevideo|amazon prime|youtube|icloud|apple com bill|google one|google youtube|dropbox|openai|chatgpt|anthropic|claude ai|patreon|twitch|crunchyroll|filmin|dazn|audible|adobe|microsoft 365|notion|github)\b/, 'subs'],
   [/\b(simyo|movistar|vodafone|orange|masorange|mas orange|masmovil|yoigo|digi|pepephone|jazztel|lowi|o2|finetwork|lycamobile|adamo)\b|\btelefon\w*/, 'internet'],

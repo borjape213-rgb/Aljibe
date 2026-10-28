@@ -276,3 +276,35 @@ import { normalizeState, countsOf } from './src/logic/state.ts';
   rejects({ ...base, settings: { currency: 5 } }, /ajustes/);
 }
 console.log('validación de datos guardados y copias ok');
+
+// extracto con formato Sabadell (datos inventados): fecha operativa, preámbulo "Etiqueta:" | valor, más reciente primero
+{
+  const { findHeader, statementInfo } = await import('./src/logic/importer.ts');
+  const { dictionaryCategory, merchantKey } = await import('./src/logic/merchants.ts');
+  const rows = [
+    ['Consulta de movimientos'], ['16/10/2026 14:26:05'], ['Cuenta: ', 'ES00 0000 0000 0000 0000 0000'], ['Divisa: ', 'EUR'],
+    ['Titular:', 'ANA*GARCIA LOPEZ'], ['Selección:', 'Desde 15/07/2026 hasta 15/10/2026'],
+    ['F. Operativa', 'Concepto', 'F. Valor', 'Importe', 'Saldo', 'Referencia 1', 'Referencia 2'],
+    ['30/09/2026', 'PRESTAMOS ADEUDO CUOTA N.1234567 30/09/26', '30/09/2026', '-124.75', '564.02', '', ''],
+    ['24/09/2026', 'BONIFIC. COMISION MANT. CUENTA', '24/09/2026', '60', '688.77', '', ''],
+    ['24/09/2026', 'INTERESES Y/O COMISIONES CUENTA', '24/09/2026', '-60', '628.77', '', ''],
+    ['31/08/2026', 'PRESTAMOS ADEUDO CUOTA N.1234567 31/08/26', '31/08/2026', '-124.75', '838.31', '', ''],
+  ];
+  const h = findHeader(rows);
+  assert.equal(h.index, 6); assert.equal(h.map.date, 0, 'F. Operativa, no F. Valor'); assert.equal(h.map.amount, 3);
+  assert.equal(guessMapping(['F. Valor', 'Concepto', 'Importe']).date, 0, 'sin operativa, sirve la de valor');
+  const r = rowsFromCSV(rows, h.map, h.index);
+  assert.equal(r.bad.length, 0); assert.equal(r.ok.length, 4); assert.equal(r.ok[0].date, '2026-09-30'); assert.equal(r.ok[0].amountCents, -12475);
+  const info = statementInfo(rows, h.index, h.map);
+  assert.equal(info.holder, 'ANA*GARCIA LOPEZ'); assert.equal(info.balanceCents, 56402);
+  assert.equal(dictionaryCategory(rows[7][1], -12475), 'loan'); assert.equal(dictionaryCategory(rows[8][1], 6000), 'fees'); assert.equal(dictionaryCategory(rows[9][1], -6000), 'fees');
+  assert.equal(merchantKey(rows[7][1]), merchantKey(rows[10][1]), 'la cuota de cada mes comparte clave');
+  assert.equal(dictionaryCategory('SEGUROS BANSABADELL VIDA,S.A.', -14954), 'insurance');
+  // titular debajo de la etiqueta (otros bancos)
+  assert.equal(statementInfo([['Titular'], ['Ana Garcia'], ['Fecha', 'Concepto', 'Importe']], 2, { date: 0, merchant: 1, amount: 2, debit: null, credit: null }).holder, 'Ana Garcia');
+  // tres cuotas mensuales iguales se detectan como recurrentes
+  const st = buildSeed(); st.transactions = []; st.recurring = []; st.accounts = [{ ...st.accounts[0], id: 'aa' }];
+  st.transactions = ['2026-05-31', '2026-06-30', '2026-07-31', '2026-08-31', '2026-09-30'].map((d, i) => ({ id: 'q' + i, accountId: 'aa', date: d, amountCents: -12475, merchant: `PRESTAMOS ADEUDO CUOTA N.1234567 ${d.slice(8)}/${d.slice(5, 7)}/26`, categoryId: 'c-loan', notes: '', tags: [], splits: [] }));
+  assert.ok(detectRecurring(st).length >= 1, 'cuota mensual detectada como recurrente');
+}
+console.log('extracto tipo Sabadell ok');
