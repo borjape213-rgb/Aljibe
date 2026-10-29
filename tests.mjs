@@ -462,3 +462,31 @@ console.log('cálculo de posiciones ok');
   assert.equal((await fetchRate('USD', 'EUR', async () => { throw new Error('sin red'); })).ok, false);
 }
 console.log('valores en otra moneda ok');
+
+// ---- reglas con importe exacto ----
+{
+  const { ruleMatches } = await import('./src/logic/importer.ts');
+  const base = { id: 'r', merchantContains: '', setCategoryId: 'c-loan' };
+  const tx = (merchant, amountCents) => ({ merchant, amountCents });
+  const onlyAmt = { ...base, amountCents: 12475 };
+  assert.ok(ruleMatches(onlyAmt, tx('PRESTAMOS CUOTA', -12475)), 'solo importe: gasto'); assert.ok(ruleMatches(onlyAmt, tx('X', 12475)), 'sin dirección vale ingreso y gasto');
+  assert.ok(!ruleMatches(onlyAmt, tx('X', -12476)), 'otro importe'); assert.ok(!ruleMatches(onlyAmt, { merchant: 'X' }), 'sin importe conocido no se aplica');
+  assert.ok(ruleMatches({ ...onlyAmt, amountDirection: 'out' }, tx('X', -12475))); assert.ok(!ruleMatches({ ...onlyAmt, amountDirection: 'out' }, tx('X', 12475)));
+  assert.ok(ruleMatches({ ...onlyAmt, amountDirection: 'in' }, tx('X', 12475))); assert.ok(!ruleMatches({ ...onlyAmt, amountDirection: 'in' }, tx('X', -12475)));
+  const both = { ...base, merchantContains: 'prestamos', amountCents: 12475 };
+  assert.ok(ruleMatches(both, tx('PRESTAMOS ADEUDO', -12475))); assert.ok(!ruleMatches(both, tx('PRESTAMOS ADEUDO', -9999)), 'texto sí, importe no'); assert.ok(!ruleMatches(both, tx('OTRA COSA', -12475)), 'importe sí, texto no');
+  assert.ok(!ruleMatches({ id: 'x', merchantContains: '' }, tx('X', 1)), 'una regla sin condiciones no se aplica');
+  // las reglas antiguas (solo texto) siguen igual
+  assert.ok(ruleMatches({ id: 'o', merchantContains: 'GASOLINERA', setCategoryId: 'c' }, tx('Gasolinera Repsol', -5000)));
+  // se aplican en la importación con el importe de cada fila
+  const res = applyRules([{ ...base, amountCents: 6000, amountDirection: 'out', setCategoryId: 'c-fees' }, both], { merchant: 'INTERESES Y/O COMISIONES', categoryId: 'c-none', amountCents: -6000 });
+  assert.equal(res.categoryId, 'c-fees');
+  assert.equal(applyRules([{ ...base, amountCents: 6000, amountDirection: 'out', setCategoryId: 'c-fees' }], { merchant: 'BONIFIC.', categoryId: 'c-none', amountCents: 6000 }).categoryId, 'c-none', 'la bonificación de +60 no cae en la regla de gastos de 60');
+  // el estado guardado valida los campos nuevos
+  const { normalizeState } = await import('./src/logic/state.ts');
+  const st = JSON.parse(JSON.stringify(buildSeed())); st.rules = [{ id: 'a', merchantContains: '', amountCents: 500, amountDirection: 'out', setCategoryId: 'c-fuel' }];
+  assert.ok(normalizeState(st).ok);
+  st.rules = [{ id: 'a', merchantContains: 'x', amountCents: 'cinco' }]; assert.ok(!normalizeState(st).ok);
+  st.rules = [{ id: 'a', merchantContains: 'x', amountCents: 5, amountDirection: 'sideways' }]; assert.ok(!normalizeState(st).ok);
+}
+console.log('reglas con importe ok');

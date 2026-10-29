@@ -15,7 +15,7 @@ export async function createTransaction(input: { accountId: Id; date: string; am
   if (!Number.isInteger(input.amountCents) || input.amountCents === 0) throw new ValidationError('El importe no puede ser cero.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new ValidationError('La fecha no es válida.');
   const s = getState();
-  const ruled = applyRules(s.rules, { merchant: input.merchant.trim(), categoryId: input.categoryId });
+  const ruled = applyRules(s.rules, { merchant: input.merchant.trim(), categoryId: input.categoryId, amountCents: input.amountCents });
   const t: Transaction = { id: uid('t'), accountId: input.accountId, date: input.date, amountCents: input.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId, notes: input.notes ?? '', tags: [], hidden: false, splits: [] };
   const acc = s.accounts.find((a) => a.id === input.accountId);
   mutate((st) => ({ ...st, transactions: [t, ...st.transactions].sort(byDateDesc), accounts: st.accounts.map((a) => (a.id === input.accountId && !hasNoMovements(a) ? { ...a, balanceCents: a.balanceCents + t.amountCents } : a)) }));
@@ -106,7 +106,7 @@ export async function importRows(accountId: Id, rows: ImportRow[], opts: { setBa
   const s = getState();
   const { fresh, skipped } = planImport(s, accountId, rows);
   const holder = opts.holder ?? s.settings.holder;
-  const staged = fresh.map(({ row, key }) => ({ id: uid('t'), row, key, ruled: applyRules(s.rules, { merchant: row.merchant, categoryId: 'c-none' }) }));
+  const staged = fresh.map(({ row, key }) => ({ id: uid('t'), row, key, ruled: applyRules(s.rules, { merchant: row.merchant, categoryId: 'c-none', amountCents: row.amountCents }) }));
   const sugg = suggestCategories(s, staged.filter((x) => x.ruled.categoryId === 'c-none').map((x) => ({ id: x.id, merchant: x.ruled.merchant, amountCents: x.row.amountCents })), holder);
   const news: Transaction[] = staged.map(({ id, row, key, ruled }) => ({ id, accountId, date: row.date, amountCents: row.amountCents, merchant: ruled.merchant, categoryId: ruled.categoryId !== 'c-none' ? ruled.categoryId : sugg.byId.get(id) ?? 'c-none', notes: '', tags: [], hidden: false, splits: [], externalId: key }));
   const delta = news.reduce((n, t) => n + t.amountCents, 0);
@@ -127,7 +127,7 @@ export async function categorizeUncategorized(): Promise<{ assigned: number; rem
   const todo = s.transactions.filter((t) => t.categoryId === 'c-none' && !t.hidden && !t.splits.length);
   const byId = new Map<Id, Id>();
   const rest: Transaction[] = [];
-  for (const t of todo) { const r = applyRules(s.rules, { merchant: t.merchant, categoryId: 'c-none' }); if (r.categoryId !== 'c-none') byId.set(t.id, r.categoryId); else rest.push(t); }
+  for (const t of todo) { const r = applyRules(s.rules, { merchant: t.merchant, categoryId: 'c-none', amountCents: t.amountCents }); if (r.categoryId !== 'c-none') byId.set(t.id, r.categoryId); else rest.push(t); }
   const sugg = suggestCategories(s, rest.map((t) => ({ id: t.id, merchant: t.merchant, amountCents: t.amountCents })));
   sugg.byId.forEach((c, id) => byId.set(id, c));
   mutate((st) => ({
@@ -142,10 +142,14 @@ export async function approveAllDetected(list: RecurringStream[]): Promise<void>
 }
 
 export async function updateSettings(patch: Partial<State['settings']>) { mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } })); }
-export async function addRule(r: { merchantContains: string; setCategoryId?: Id; renameTo?: string }) {
-  if (!r.merchantContains.trim()) throw new ValidationError('Escribe el texto que debe contener el comerciante.');
+export async function addRule(r: { id?: Id; merchantContains: string; amountCents?: number; amountDirection?: 'out' | 'in'; setCategoryId?: Id; renameTo?: string }) {
+  const text = r.merchantContains.trim();
+  const hasAmount = r.amountCents !== undefined;
+  if (hasAmount && !(Number.isInteger(r.amountCents) && (r.amountCents as number) > 0)) throw new ValidationError('Escribe un importe mayor que cero.');
+  if (!text && !hasAmount) throw new ValidationError('Escribe el texto que debe contener el comerciante o un importe.');
   if (!r.setCategoryId && !r.renameTo) throw new ValidationError('Elige una categoría o un nombre nuevo.');
-  mutate((s) => ({ ...s, rules: [...s.rules, { id: uid('r'), ...r }] }));
+  const rule = { id: r.id ?? uid('r'), merchantContains: text, amountCents: r.amountCents, amountDirection: hasAmount ? r.amountDirection : undefined, setCategoryId: r.setCategoryId, renameTo: r.renameTo };
+  mutate((s) => ({ ...s, rules: r.id && s.rules.some((x) => x.id === r.id) ? s.rules.map((x) => (x.id === r.id ? rule : x)) : [...s.rules, rule] }));
 }
 export async function removeRule(id: Id) { mutate((s) => ({ ...s, rules: s.rules.filter((r) => r.id !== id) })); }
 export async function saveCategory(c: { id?: Id; groupId: Id; name: string }) {

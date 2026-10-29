@@ -2,10 +2,23 @@ import type { Id, Rule, State, Transaction } from './types.ts';
 import { parseAmount, parseCents } from './money.ts';
 import { iso } from './dates.ts';
 
-export function applyRules(rules: Rule[], t: Pick<Transaction, 'merchant' | 'categoryId'>): { merchant: string; categoryId: Id } {
+/** ¿Cumple el movimiento todas las condiciones de la regla (texto y/o importe exacto)? Una regla sin ninguna condición no se aplica nunca. */
+export function ruleMatches(r: Rule, t: { merchant: string; amountCents?: number }): boolean {
+  const hasText = !!r.merchantContains, hasAmount = typeof r.amountCents === 'number';
+  if (!hasText && !hasAmount) return false;
+  if (hasText && !t.merchant.toLowerCase().includes(r.merchantContains.toLowerCase())) return false;
+  if (hasAmount) {
+    if (typeof t.amountCents !== 'number' || Math.abs(t.amountCents) !== r.amountCents) return false;
+    if (r.amountDirection === 'out' && t.amountCents >= 0) return false;
+    if (r.amountDirection === 'in' && t.amountCents <= 0) return false;
+  }
+  return true;
+}
+
+export function applyRules(rules: Rule[], t: Pick<Transaction, 'merchant' | 'categoryId'> & { amountCents?: number }): { merchant: string; categoryId: Id } {
   let { merchant, categoryId } = t;
   for (const r of rules) {
-    if (!r.merchantContains || !merchant.toLowerCase().includes(r.merchantContains.toLowerCase())) continue;
+    if (!ruleMatches(r, { merchant, amountCents: t.amountCents })) continue;
     if (r.renameTo) merchant = r.renameTo;
     if (r.setCategoryId) categoryId = r.setCategoryId;
   }

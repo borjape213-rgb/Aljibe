@@ -70,6 +70,10 @@ export interface Rule {
   id: Id;
   /** Texto que debe contener el comerciante (sin distinguir mayúsculas). */
   merchantContains: string;
+  /** Importe exacto (en valor absoluto, céntimos) que debe tener el movimiento. Puede ir solo o junto con el texto. */
+  amountCents?: number;
+  /** Solo gastos, solo ingresos, o ambos si no se indica. */
+  amountDirection?: 'out' | 'in';
   setCategoryId?: Id;
   renameTo?: string;
 }

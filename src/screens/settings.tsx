@@ -12,6 +12,8 @@ import { TopBar } from './shell.tsx';
 import { CategoryPicker } from './common.tsx';
 import { addRule, addTag, clearAll, markBackup, moveItem, deleteCategory, exportJSON, importRows, parseBackup, removeRule, removeTag, replaceAllData, resetSeed, restorePreviousCopy, saveCategory, updateSettings, ValidationError, type ParsedBackup } from '../actions.ts';
 import { todayISO } from '../logic/dates.ts';
+import { parseCents } from '../logic/money.ts';
+import type { Rule } from '../logic/types.ts';
 
 export function Settings({ route }: { route: Route }) {
   const sub = route.path[1];
@@ -59,26 +61,53 @@ function Categories() {
   );
 }
 
+const ruleText = (r: Rule) => [r.merchantContains ? `contiene «${r.merchantContains}»` : '', typeof r.amountCents === 'number' ? `importe ${money(r.amountCents)}${r.amountDirection === 'out' ? ' (solo gastos)' : r.amountDirection === 'in' ? ' (solo ingresos)' : ''}` : ''].filter(Boolean).join(' y ');
+
 function RulesTags() {
   const s = useData();
-  const [m, setM] = useState(''); const [cat, setCat] = useState('c-groceries'); const [ren, setRen] = useState(''); const [err, setErr] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [m, setM] = useState(''); const [amt, setAmt] = useState(''); const [dir, setDir] = useState<'' | 'out' | 'in'>('');
+  const [setCat, setSetCat] = useState(true); const [cat, setCat2] = useState('c-groceries'); const [ren, setRen] = useState(''); const [err, setErr] = useState<string | null>(null);
   const [tag, setTag] = useState(''); const [terr, setTerr] = useState<string | null>(null);
+  const reset = () => { setEditId(null); setM(''); setAmt(''); setDir(''); setSetCat(true); setCat2('c-groceries'); setRen(''); setErr(null); };
+  const edit = (r: Rule) => {
+    setEditId(r.id); setM(r.merchantContains); setAmt(typeof r.amountCents === 'number' ? String(r.amountCents / 100).replace('.', ',') : ''); setDir(r.amountDirection ?? '');
+    setSetCat(!!r.setCategoryId); setCat2(r.setCategoryId ?? 'c-groceries'); setRen(r.renameTo ?? ''); setErr(null);
+    document.getElementById('rm')?.scrollIntoView?.({ block: 'center' });
+  };
+  const save = async () => {
+    try {
+      const t = amt.trim();
+      let amountCents: number | undefined, direction: 'out' | 'in' | undefined = dir || undefined;
+      if (t) {
+        const c = parseCents(t.replace(/^[+-]/, ''));
+        if (c === null || c <= 0) return setErr('Escribe un importe válido mayor que cero, por ejemplo 124,75.');
+        amountCents = c;
+        if (t.startsWith('-')) direction = 'out'; else if (t.startsWith('+')) direction = 'in';
+      }
+      await addRule({ id: editId ?? undefined, merchantContains: m, amountCents, amountDirection: direction, setCategoryId: setCat ? cat : undefined, renameTo: ren.trim() || undefined });
+      toast(editId ? 'Regla actualizada.' : 'Regla creada. Se aplica a las nuevas transacciones.'); reset();
+    } catch (x) { setErr(x instanceof ValidationError ? x.message : 'Error'); }
+  };
   return (
     <>
       <TopBar title="Reglas y etiquetas" back="/settings" />
       <main>
         <section className="card" aria-label="Reglas">
           <div className="sechead"><span>Reglas</span></div>
-          {s.rules.length === 0 ? <EmptyState title="Sin reglas" text="Una regla cambia categoría o nombre cuando el comerciante contiene un texto." /> : s.rules.map((r) => (
-            <div key={r.id} className="row"><span className="grow"><span className="title">Si contiene «{r.merchantContains}»</span><span className="xs muted">{[r.renameTo ? `Renombrar a ${r.renameTo}` : '', r.setCategoryId ? `Categoría ${s.categories.find((c) => c.id === r.setCategoryId)?.name}` : ''].filter(Boolean).join(' · ')}</span></span><IconButton label={`Borrar regla ${r.merchantContains}`} onClick={() => removeRule(r.id)}><LuTrash2 /></IconButton></div>
+          {s.rules.length === 0 ? <EmptyState title="Sin reglas" text="Una regla cambia categoría o nombre cuando el comerciante contiene un texto, el importe es exacto, o ambas cosas." /> : s.rules.map((r) => (
+            <div key={r.id} className="row"><span className="grow"><span className="title">Si {ruleText(r)}</span><span className="xs muted">{[r.renameTo ? `Renombrar a ${r.renameTo}` : '', r.setCategoryId ? `Categoría ${s.categories.find((c) => c.id === r.setCategoryId)?.name}` : ''].filter(Boolean).join(' · ')}</span></span><Button variant="ghost" onClick={() => edit(r)}>Editar</Button><IconButton label={`Borrar regla ${ruleText(r)}`} onClick={() => { if (editId === r.id) reset(); void removeRule(r.id); }}><LuTrash2 /></IconButton></div>
           ))}
         </section>
-        <section className="card pad form" aria-label="Nueva regla">
-          <h2>Nueva regla</h2>
-          <Field id="rm" label="El comerciante contiene" error={err}>{(p) => <input {...p} className="input" value={m} onChange={(e) => setM(e.target.value)} />}</Field>
-          <Field id="rc" label="Poner la categoría">{() => <CategoryPicker s={s} value={cat} onChange={setCat} />}</Field>
-          <Field id="rr" label="Renombrar a (opcional)">{(p) => <input {...p} className="input" value={ren} onChange={(e) => setRen(e.target.value)} />}</Field>
-          <Button onClick={async () => { try { await addRule({ merchantContains: m, setCategoryId: cat, renameTo: ren.trim() || undefined }); setM(''); setRen(''); setErr(null); toast('Regla creada. Se aplica a las nuevas transacciones.'); } catch (x) { setErr(x instanceof ValidationError ? x.message : 'Error'); } }}>Crear regla</Button>
+        <section className="card pad form" aria-label={editId ? 'Editar regla' : 'Nueva regla'}>
+          <h2>{editId ? 'Editar regla' : 'Nueva regla'}</h2>
+          <Field id="rm" label="El comerciante contiene (opcional si pones importe)" error={err}>{(p) => <input {...p} className="input" value={m} onChange={(e) => setM(e.target.value)} />}</Field>
+          <Field id="ra" label="Importe exacto (opcional)" hint="Por ejemplo 124,75. Con un «-» delante (-124,75) solo gastos; con «+», solo ingresos. Si pones texto e importe, deben cumplirse los dos.">{(p) => <input {...p} className="input num" inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value)} />}</Field>
+          {amt.trim() && !/^[+-]/.test(amt.trim()) ? <Field id="rd" label="Se aplica a">{(p) => <select {...p} className="input" value={dir} onChange={(e) => setDir(e.target.value as '' | 'out' | 'in')}><option value="">Gastos e ingresos</option><option value="out">Solo gastos</option><option value="in">Solo ingresos</option></select>}</Field> : null}
+          <label style={{ display: 'flex', gap: 12, alignItems: 'center', minHeight: 48 }}><input type="checkbox" style={{ width: 22, height: 22 }} checked={setCat} onChange={(e) => setSetCat(e.target.checked)} />Poner una categoría</label>
+          {setCat ? <Field id="rc" label="Categoría">{() => <CategoryPicker s={s} value={cat} onChange={setCat2} />}</Field> : null}
+          <Field id="rr" label={setCat ? 'Renombrar a (opcional)' : 'Renombrar a'}>{(p) => <input {...p} className="input" value={ren} onChange={(e) => setRen(e.target.value)} />}</Field>
+          <div className="btnrow">{editId ? <Button variant="secondary" onClick={reset}>Cancelar</Button> : null}<Button onClick={() => void save()}>{editId ? 'Guardar cambios' : 'Crear regla'}</Button></div>
         </section>
         <section className="card" aria-label="Etiquetas">
           <div className="sechead"><span>Etiquetas</span></div>
