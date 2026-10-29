@@ -3,17 +3,17 @@ import { LuPlus, LuTrash2 } from 'react-icons/lu';
 import type { Route } from '../router.tsx';
 import { setQuery } from '../router.tsx';
 import { useData } from '../store.ts';
-import { RANGES, allocation, holdingRows, type HoldingRow, pctSeries, portfolioPctSeries, portfolioReturn, CLASS_LABEL } from '../logic/invest.ts';
+import { RANGES, allocation, costOf, holdingRows, type HoldingRow, pctSeries, portfolioPctSeries, portfolioReturn, CLASS_LABEL } from '../logic/invest.ts';
 import { addDays, todayISO } from '../logic/dates.ts';
 import { priceLookup } from '../logic/ledger.ts';
-import type { AssetClass } from '../logic/types.ts';
+import type { AssetClass, Holding } from '../logic/types.ts';
 import { Amount, Banner, Button, Change, EmptyState, Field, IconButton, Ranges, Segmented, Sheet, money, toast } from '../ui.tsx';
 import { AreaChart, CHART_COLORS, StackedBar } from '../charts.tsx';
 import { TopBar } from './shell.tsx';
 import { PriceUpdate, SymbolSheet, fmtStamp } from './priceupdate.tsx';
 import { addPrice, removeHolding, saveHolding, saveSecurity, ValidationError } from '../actions.ts';
 
-const unit = (n: number, cur: string) => n.toLocaleString('es-ES', { style: 'currency', currency: cur, minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const unit = (n: number, cur: string) => n.toLocaleString('es-ES', { style: 'currency', currency: cur, minimumFractionDigits: 2, maximumFractionDigits: 4, useGrouping: 'always' });
 const qtyText = (q: number) => q.toLocaleString('es-ES', { maximumFractionDigits: 6 });
 
 /** Cantidad, precio unitario de compra y actual a la izquierda; valor total, ganancia o pérdida y % a la derecha. */
@@ -110,17 +110,23 @@ export function Investments({ route }: { route: Route }) {
   );
 }
 
-function HoldingForm({ onClose, securityId }: { onClose: () => void; securityId?: string }) {
+const plain = (n: number) => String(Math.round(n * 1e6) / 1e6).replace('.', ',');
+
+function HoldingForm({ onClose, securityId, holding }: { onClose: () => void; securityId?: string; holding?: Holding }) {
   const s = useData();
+  const editing = !!holding;
   const accounts = s.accounts.filter((a) => a.group === 'investments');
-  const [account, setAccount] = useState(accounts[0]?.id ?? '');
-  const [sec, setSec] = useState(securityId ?? s.securities[0]?.id ?? '__new');
-  const [qty, setQty] = useState('');
-  const [unitCost, setUnitCost] = useState('');
+  const [account, setAccount] = useState(holding?.accountId ?? accounts[0]?.id ?? '');
+  const [sec, setSec] = useState(holding?.securityId ?? securityId ?? s.securities[0]?.id ?? '__new');
+  const [qty, setQty] = useState(holding ? plain(holding.quantity) : '');
+  const exact = holding ? costOf(holding) : null;
+  const [unitCost, setUnitCost] = useState(holding && exact !== null ? plain(exact / 100 / holding.quantity) : '');
   const [name, setName] = useState(''); const [ticker, setTicker] = useState(''); const [cls, setCls] = useState<AssetClass>('equity'); const [price, setPrice] = useState(''); const [symbol, setSymbol] = useState(''); const [cur, setCur] = useState('EUR');
   const [err, setErr] = useState<Record<string, string>>({});
   const qn = num(qty), un = unitCost.trim() === '' ? NaN : num(unitCost);
   const total = qn > 0 && un >= 0 ? Math.round(qn * un * 100) : null;
+  const secObj = s.securities.find((x) => x.id === sec);
+  const lastPrice = secObj ? (s.prices[sec] ?? []).at(-1) : undefined;
   if (!accounts.length) return <Sheet title="Añadir posición" onClose={onClose}><Banner tone="warn">Crea primero una cuenta de tipo Inversiones.</Banner></Sheet>;
   const submit = async () => {
     const e: Record<string, string> = {};
@@ -134,16 +140,16 @@ function HoldingForm({ onClose, securityId }: { onClose: () => void; securityId?
     if (Object.keys(e).length) return;
     try {
       const id = sec === '__new' ? await saveSecurity({ name, ticker, assetClass: cls, price: num(price), date: todayISO(), symbol, currency: cur.trim().toUpperCase() || 'EUR' }) : sec;
-      await saveHolding({ accountId: account, securityId: id, quantity: q, costBasisCents: c });
-      toast('Posición guardada'); onClose();
+      await saveHolding({ id: holding?.id, accountId: account, securityId: id, quantity: q, costBasisCents: c, unitCost: uc });
+      toast(editing ? 'Posición actualizada' : 'Posición guardada'); onClose();
     } catch (x) { setErr({ name: x instanceof ValidationError ? x.message : 'No se ha podido guardar.' }); }
   };
   return (
-    <Sheet title="Añadir posición" onClose={onClose}>
+    <Sheet title={editing ? 'Editar posición' : 'Añadir posición'} onClose={onClose}>
       <form className="form" noValidate onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <Field id="ha" label="Cuenta">{(p) => <select {...p} className="input" value={account} onChange={(e) => setAccount(e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</Field>
-        <Field id="hs" label="Valor">{(p) => <select {...p} className="input" value={sec} onChange={(e) => setSec(e.target.value)}>{s.securities.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.ticker})</option>)}<option value="__new">Otro valor nuevo…</option></select>}</Field>
-        {sec === '__new' ? <>
+        <Field id="hs" label="Valor" hint={sec !== '__new' && lastPrice ? `Precio actual guardado: ${unit(lastPrice.price, s.settings.currency || 'EUR')} (${lastPrice.date.slice(8, 10)}/${lastPrice.date.slice(5, 7)}/${lastPrice.date.slice(0, 4)}). Se cambia con «Actualizar precio» en la ficha del valor.` : undefined}>{(p) => <select {...p} className="input" value={sec} disabled={editing} onChange={(e) => setSec(e.target.value)}>{s.securities.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.ticker})</option>)}<option value="__new">Otro valor nuevo…</option></select>}</Field>
+        {sec === '__new' && !editing ? <>
           <Field id="hn" label="Nombre" error={err.name}>{(p) => <input {...p} className="input" value={name} onChange={(e) => setName(e.target.value)} />}</Field>
           <Field id="ht" label="Símbolo">{(p) => <input {...p} className="input" value={ticker} onChange={(e) => setTicker(e.target.value)} maxLength={12} />}</Field>
           <Field id="hy" label="Símbolo para precios online (opcional)" hint="Por ejemplo AIR:EPA o AAPL.">{(p) => <input {...p} className="input" value={symbol} onChange={(e) => setSymbol(e.target.value)} maxLength={20} autoCapitalize="characters" />}</Field>
@@ -166,6 +172,7 @@ export function HoldingDetail({ id }: { id: string }) {
   const [adding, setAdding] = useState(false);
   const [priceFor, setPriceFor] = useState(false);
   const [symFor, setSymFor] = useState(false);
+  const [editHolding, setEditHolding] = useState<Holding | null>(null);
   const [pv, setPv] = useState('');
   const [pe, setPe] = useState<string | null>(null);
   const days = RANGES.find((r) => r.id === rid)?.days ?? 365;
@@ -193,6 +200,7 @@ export function HoldingDetail({ id }: { id: string }) {
           {rows.length === 0 ? <p className="sm muted" style={{ padding: 16, margin: 0 }}>No tienes posiciones de este valor.</p> : rows.map((r) => (
             <div key={r.holding.id} className="row">
               <PositionInfo r={r} cur={s.settings.currency || 'EUR'} sub={s.accounts.find((a) => a.id === r.holding.accountId)?.name ?? ''} />
+              <Button variant="ghost" onClick={() => setEditHolding(r.holding)}>Editar</Button>
               <IconButton label={`Quitar posición en ${s.accounts.find((a) => a.id === r.holding.accountId)?.name}`} onClick={async () => { await removeHolding(r.holding.id); toast('Posición quitada'); }}><LuTrash2 /></IconButton>
             </div>
           ))}
@@ -201,6 +209,7 @@ export function HoldingDetail({ id }: { id: string }) {
         {hs.length === 0 ? null : null}
       </main>
       {adding ? <HoldingForm securityId={id} onClose={() => setAdding(false)} /> : null}
+      {editHolding ? <HoldingForm holding={editHolding} onClose={() => setEditHolding(null)} /> : null}
       {symFor ? <SymbolSheet id={id} onClose={() => setSymFor(false)} /> : null}
       {priceFor ? (
         <Sheet title="Precio de hoy" onClose={() => setPriceFor(false)}>

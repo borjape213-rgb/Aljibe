@@ -98,7 +98,7 @@ export function normalizeState(raw: unknown): Normalized {
     const rules = list(p, 'rules', false, 'reglas'); each(rules, 'Regla', (r) => str(r.id) && str(r.merchantContains));
     const recurring = list(p, 'recurring', false, 'recurrentes'); each(recurring, 'Recurrente', (r) => str(r.id) && str(r.name) && int(r.amountCents) && int(r.dayOfMonth) && str(r.categoryId) && str(r.accountId) && ['weekly', 'monthly', 'yearly'].includes(r.frequency as string) && ['active', 'cancelled', 'pending-approval'].includes(r.status as string));
     const securities = list(p, 'securities', false, 'valores'); each(securities, 'Valor', (r) => str(r.id) && str(r.ticker) && str(r.name) && str(r.assetClass));
-    const holdings = list(p, 'holdings', false, 'posiciones'); each(holdings, 'Posición', (r) => str(r.id) && str(r.accountId) && str(r.securityId) && num(r.quantity) && (r.costBasisCents === null || int(r.costBasisCents)));
+    const holdings = list(p, 'holdings', false, 'posiciones'); each(holdings, 'Posición', (r) => str(r.id) && str(r.accountId) && str(r.securityId) && num(r.quantity) && (r.costBasisCents === null || int(r.costBasisCents)) && (r.unitCost === undefined || r.unitCost === null || (typeof r.unitCost === 'number' && Number.isFinite(r.unitCost) && r.unitCost >= 0)));
     const benchmarks = list(p, 'benchmarks', false, 'índices'); each(benchmarks, 'Índice', (r) => str(r.id) && str(r.name) && Array.isArray(r.series) && (r.series as unknown[]).every((x) => isObj(x) && str(x.date) && num(x.price)));
     const prices = p.prices === undefined || p.prices === null ? {} : p.prices;
     need(isObj(prices) && Object.values(prices).every((s) => Array.isArray(s) && s.every((x) => isObj(x) && str(x.date) && num(x.price))), 'Los precios no son válidos.');

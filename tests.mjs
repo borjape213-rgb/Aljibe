@@ -384,3 +384,46 @@ console.log('cuentas Loans ok');
   assert.equal(Math.round(85.5 * 133.436752 * 100), 1140884);
 }
 console.log('posiciones: precios unitarios ok');
+
+// ---- cálculo de posiciones: contra las cifras de un broker real y contra un cálculo independiente ----
+{
+  const { costOf } = await import('./src/logic/invest.ts');
+  const mkState = (specs) => {
+    const st = buildSeed(); st.accounts = [{ id: 'A', name: 'B', group: 'investments', subtype: 'Fondos', balanceCents: 0, currency: 'EUR', hidden: false, updatedAt: '2026-10-29T00:00:00' }];
+    st.securities = specs.map((x, i) => ({ id: 's' + i, ticker: 'T' + i, name: 'V' + i, assetClass: 'equity' }));
+    st.prices = Object.fromEntries(specs.map((x, i) => ['s' + i, [{ date: addDays(today, -400), price: x.price * 0.5 }, { date: today, price: x.price }]]));
+    st.holdings = specs.map((x, i) => ({ id: 'h' + i, accountId: 'A', securityId: 's' + i, quantity: x.q, costBasisCents: x.unit === null ? null : Math.round(x.q * x.unit * 100), unitCost: x.unit }));
+    return st;
+  };
+  // Nasdaq-100: 117 uds a 305,35 € con compra a 133,436752 → valor 35.725,95; ganancia 20.113,85 (+128,83 %)
+  // S&P 500: 63 uds a 203,00 € con compra a 117,828 → valor 12.789,00; ganancia 5.365,84 (+72,28 %)
+  const st = mkState([{ q: 117, price: 305.35, unit: 133.436752 }, { q: 63, price: 203, unit: 117.828 }]);
+  const [nq, sp] = ['h0', 'h1'].map((id) => holdingRows(st, null, 30).find((r) => r.holding.id === id));
+  assert.equal(nq.valueCents, 3572595); assert.equal(nq.gainCents, 2011385); assert.ok(Math.abs(nq.gainPct - 128.83) <= 0.0101, 'el % cae justo en el límite de redondeo (128,835): el broker muestra 128,83'); assert.equal(nq.gainPct.toFixed(3), '128.835');
+  assert.equal(sp.valueCents, 1278900); assert.equal(sp.gainCents, 536584); assert.ok(Math.abs(sp.gainPct - 72.28) <= 0.0101, 'el broker trunca (72,285 → 72,28); aquí se redondea'); assert.equal(sp.gainPct.toFixed(3), '72.285');
+  assert.equal(sp.unitCost, 117.828, 'el precio de compra se conserva exacto'); assert.equal(sp.unitPrice, 203);
+  // el valor no depende del precio de compra; la ganancia y el % sí
+  const base = mkState([{ q: 63, price: 203, unit: 100 }]), alt = mkState([{ q: 63, price: 203, unit: 150 }]);
+  const a = holdingRows(base, null, 30)[0], b = holdingRows(alt, null, 30)[0];
+  assert.equal(a.valueCents, b.valueCents); assert.equal(a.gainCents, 63 * 103 * 100); assert.equal(b.gainCents, 63 * 53 * 100);
+  assert.ok(a.gainPct > b.gainPct);
+  // sin precio de compra no hay ganancia; una posición antigua con solo coste total sigue funcionando
+  assert.equal(holdingRows(mkState([{ q: 5, price: 10, unit: null }]), null, 30)[0].gainCents, null);
+  const old = mkState([{ q: 10, price: 20, unit: 5 }]); delete old.holdings[0].unitCost; old.holdings[0].costBasisCents = 5000;
+  const o = holdingRows(old, null, 30)[0]; assert.equal(o.gainCents, 15000); assert.equal(o.unitCost, 5); assert.equal(costOf(old.holdings[0]), 5000);
+  // aleatorio: cada fila coincide con un cálculo independiente y todo suma
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const specs = Array.from({ length: 40 }, () => ({ q: Math.round(rnd() * 5000) / 100 + 0.01, price: Math.round(rnd() * 50000) / 100 + 0.01, unit: rnd() < 0.2 ? null : Math.round(rnd() * 5000000) / 10000 }));
+  const rs = mkState(specs), rows = holdingRows(rs, null, 30);
+  specs.forEach((x, i) => {
+    const r = rows.find((y) => y.holding.id === 'h' + i), val = x.q * x.price * 100;
+    assert.equal(r.valueCents, Math.round(val));
+    if (x.unit === null) assert.equal(r.gainCents, null);
+    else { const cost = x.q * x.unit * 100; assert.equal(r.gainCents, Math.round(val) - Math.round(cost)); if (Math.round(cost) > 0) assert.ok(Math.abs(r.gainPct - ((Math.round(val) - Math.round(cost)) / Math.round(cost)) * 100) < 1e-9); }
+  });
+  const sum = rows.reduce((n, r) => n + r.valueCents, 0);
+  assert.equal(accountValueCents(rs, rs.accounts[0]), sum, 'el valor de la cuenta es la suma de sus posiciones');
+  assert.equal(allocation(rows).total, sum); assert.equal(portfolioReturn(rs, null, 30).valueCents, sum);
+  assert.equal(netWorthSeries(rs, addDays(today, -1), today).at(-1).net, sum, 'el patrimonio es la suma');
+}
+console.log('cálculo de posiciones ok');

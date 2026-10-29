@@ -209,10 +209,11 @@ export async function copyBudget(fromMonth: string, toMonth: string): Promise<nu
   return src.length;
 }
 
-export async function saveHolding(h: { id?: Id; accountId: Id; securityId: Id; quantity: number; costBasisCents: number | null }): Promise<void> {
+export async function saveHolding(h: { id?: Id; accountId: Id; securityId: Id; quantity: number; costBasisCents: number | null; unitCost?: number | null }): Promise<void> {
   if (!(h.quantity > 0)) throw new ValidationError('La cantidad debe ser mayor que cero.');
   if (h.costBasisCents !== null && h.costBasisCents < 0) throw new ValidationError('El coste no puede ser negativo.');
-  mutate((s) => ({ ...s, holdings: h.id ? s.holdings.map((x) => (x.id === h.id ? { ...x, ...h, id: h.id! } : x)) : [...s.holdings, { id: uid('h'), accountId: h.accountId, securityId: h.securityId, quantity: h.quantity, costBasisCents: h.costBasisCents }] }));
+  if (h.unitCost !== undefined && h.unitCost !== null && !(h.unitCost >= 0)) throw new ValidationError('El precio de compra no puede ser negativo.');
+  mutate((s) => ({ ...s, holdings: h.id ? s.holdings.map((x) => (x.id === h.id ? { ...x, ...h, id: h.id! } : x)) : [...s.holdings, { id: uid('h'), accountId: h.accountId, securityId: h.securityId, quantity: h.quantity, costBasisCents: h.costBasisCents, unitCost: h.unitCost ?? null }] }));
 }
 export async function removeHolding(id: Id) { mutate((s) => ({ ...s, holdings: s.holdings.filter((h) => h.id !== id) })); }
 export async function saveSecurity(x: { ticker: string; name: string; assetClass: State['securities'][number]['assetClass']; price: number; date: string; symbol?: string; currency?: string }): Promise<Id> {

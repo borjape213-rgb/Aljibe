@@ -21,6 +21,12 @@ export interface HoldingRow {
   unitCost: number | null;
 }
 
+/** Coste total exacto, en céntimos sin redondear: cantidad × precio de compra si se guardó, o el coste total guardado. Null si no hay coste. */
+export function costOf(h: Holding): number | null {
+  if (typeof h.unitCost === 'number' && Number.isFinite(h.unitCost)) return h.quantity * h.unitCost * 100;
+  return h.costBasisCents;
+}
+
 export function holdingRows(s: State, accountIds: Id[] | null, days: number, today = todayISO()): HoldingRow[] {
   const from = addDays(today, -days);
   const rows: HoldingRow[] = [];
@@ -30,8 +36,11 @@ export function holdingRows(s: State, accountIds: Id[] | null, days: number, tod
     if (!sec) continue;
     const f = priceLookup(s.prices[h.securityId]);
     const valueCents = Math.round(h.quantity * f(today) * 100);
+    const exactCost = costOf(h);
+    // Como en los brokers: coste y valor se redondean a céntimos y la ganancia y el % salen de esas cifras, para que lo que se ve cuadre.
+    const costCents = exactCost === null ? null : Math.round(exactCost);
     const p0 = f(from), p1 = f(today);
-    rows.push({ holding: h, name: sec.name, ticker: sec.ticker, assetClass: sec.assetClass, valueCents, periodPct: p0 ? (p1 / p0 - 1) * 100 : 0, gainCents: h.costBasisCents === null ? null : valueCents - h.costBasisCents, gainPct: h.costBasisCents ? ((valueCents - h.costBasisCents) / h.costBasisCents) * 100 : null, unitPrice: f(today), unitCost: h.costBasisCents === null || !(h.quantity > 0) ? null : h.costBasisCents / 100 / h.quantity });
+    rows.push({ holding: h, name: sec.name, ticker: sec.ticker, assetClass: sec.assetClass, valueCents, periodPct: p0 ? (p1 / p0 - 1) * 100 : 0, gainCents: costCents === null ? null : valueCents - costCents, gainPct: costCents ? ((valueCents - costCents) / costCents) * 100 : null, unitPrice: f(today), unitCost: typeof h.unitCost === 'number' ? h.unitCost : exactCost === null || !(h.quantity > 0) ? null : exactCost / 100 / h.quantity });
   }
   return rows.sort((a, b) => b.valueCents - a.valueCents);
 }

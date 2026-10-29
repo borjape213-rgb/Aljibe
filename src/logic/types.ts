@@ -109,7 +109,10 @@ export interface Holding {
   accountId: Id;
   securityId: Id;
   quantity: number;
+  /** Coste total en céntimos (cantidad × precio de compra unitario, redondeado). */
   costBasisCents: number | null;
+  /** Precio de compra por unidad tal como se escribió, sin redondear a céntimos. Con él, el coste exacto es cantidad × unitCost. */
+  unitCost?: number | null;
 }
 export interface Benchmark {
   id: Id;

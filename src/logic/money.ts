@@ -6,7 +6,7 @@ export function formatCents(
   currency: string,
   opts: { signed?: boolean; locale?: string } = {},
 ): string {
-  const nf = new Intl.NumberFormat(opts.locale, { style: 'currency', currency });
+  const nf = new Intl.NumberFormat(opts.locale, { style: 'currency', currency, useGrouping: 'always' });
   const body = nf.format(Math.abs(cents) / 100);
   if (!opts.signed) return cents < 0 ? `${MINUS}${body}` : body;
   if (cents === 0) return body;
