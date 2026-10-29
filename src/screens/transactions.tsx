@@ -11,6 +11,7 @@ import { Amount, Banner, Button, Chip, EmptyState, Field, IconButton, Segmented,
 import { TopBar } from './shell.tsx';
 import { CategoryPicker, DayGroups, useNames } from './common.tsx';
 import { categorizeQueue, needsCategory } from '../logic/review.ts';
+import { SORTS, filterTransactions, parseAbsAmount, sortTransactions, type TxSort, type TxType } from '../logic/txfilter.ts';
 import { categorizeUncategorized, createTransaction, deleteTransaction, setSplits, updateTransactions, ValidationError } from '../actions.ts';
 
 const PAGE = 60;
@@ -21,6 +22,12 @@ export function Transactions({ route }: { route: Route }) {
   const acc = route.query.get('acc') ?? '';
   const cat = route.query.get('cat') ?? '';
   const status = route.query.get('st') ?? '';
+  const type = (route.query.get('type') ?? '') as TxType;
+  const from = route.query.get('from') ?? '', to = route.query.get('to') ?? '';
+  const minT = route.query.get('min') ?? '', maxT = route.query.get('max') ?? '';
+  const sort = (SORTS.some((x) => x.id === route.query.get('sort')) ? route.query.get('sort') : 'date-desc') as TxSort;
+  const minC = parseAbsAmount(minT), maxC = parseAbsAmount(maxT);
+  const badRange = (!!from && !!to && from > to) || (typeof minC === 'number' && typeof maxC === 'number' && minC > maxC);
   const [limit, setLimit] = useState(PAGE);
   const [adding, setAdding] = useState(false);
   const [filters, setFilters] = useState(false);
@@ -28,10 +35,10 @@ export function Transactions({ route }: { route: Route }) {
   const [bulk, setBulk] = useState(false);
   const { kindOf } = catIndex(s);
   const items = useMemo(() => {
-    const ql = q.trim().toLowerCase();
-    return s.transactions.filter((t) => (!ql || t.merchant.toLowerCase().includes(ql) || t.notes.toLowerCase().includes(ql)) && (!acc || t.accountId === acc) && (!cat || t.categoryId === cat || t.splits.some((p) => p.categoryId === cat)) && (!status || (status === 'uncat' || status === 'review' ? needsCategory(t) : status === 'hidden' ? t.hidden : true)));
-  }, [s.transactions, q, acc, cat, status]);
-  const active = [acc, cat, status].filter(Boolean).length;
+    const found = filterTransactions(s.transactions, { q, acc, cat, status, type, from, to, minCents: typeof minC === 'number' ? minC : undefined, maxCents: typeof maxC === 'number' ? maxC : undefined });
+    return sort === 'date-desc' ? found : sortTransactions(found, sort);
+  }, [s.transactions, q, acc, cat, status, type, from, to, minC, maxC, sort]);
+  const active = [acc, cat, status, type, from, to, typeof minC === 'number' ? minT : '', typeof maxC === 'number' ? maxT : ''].filter(Boolean).length;
   void kindOf;
   const toggle = (id: Id) => setSel((cur) => { const n = new Set(cur ?? []); n.has(id) ? n.delete(id) : n.add(id); return n; });
   return (
@@ -44,13 +51,14 @@ export function Transactions({ route }: { route: Route }) {
         </div>
         <div className="btnrow" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <span className="sm muted" aria-live="polite">{items.length} {items.length === 1 ? 'transacción' : 'transacciones'}{active ? ' con filtros' : ''}</span>
+          <select className="input" aria-label="Ordenar por" style={{ width: 'auto', minHeight: 40, padding: '0 8px' }} value={sort} onChange={(e) => setQuery('sort', e.target.value === 'date-desc' ? null : e.target.value)}>{SORTS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select>
           {sel ? <><Button variant="ghost" onClick={() => setSel(null)}>Cancelar</Button><Button disabled={!sel.size} onClick={() => setBulk(true)}>Cambiar categoría ({sel.size})</Button></> : <Button variant="ghost" onClick={() => setSel(new Set())} disabled={!items.length}>Seleccionar</Button>}
         </div>
         {s.transactions.length === 0 ? <EmptyState title="Todavía no has apuntado nada" text="Apunta un movimiento con el botón + o impórtalos desde un CSV en Ajustes." action={<Button onClick={() => setAdding(true)}>Añadir transacción</Button>} /> : items.length === 0 ? (
           <EmptyState title="Ningún resultado" text="Prueba con otra búsqueda o quita algún filtro." action={<Button variant="secondary" onClick={() => { location.hash = '#/transactions'; }}>Quitar filtros</Button>} />
         ) : (
           <>
-            <DayGroups items={items.slice(0, limit)} s={s} showAccount selectable={!!sel} selected={sel ?? undefined} onToggle={toggle} />
+            <DayGroups items={items.slice(0, limit)} s={s} showAccount flat={sort.startsWith('amount')} selectable={!!sel} selected={sel ?? undefined} onToggle={toggle} />
             {items.length > limit ? <Button variant="secondary" onClick={() => setLimit(limit + PAGE)}>Mostrar más ({items.length - limit})</Button> : null}
           </>
         )}
@@ -61,6 +69,17 @@ export function Transactions({ route }: { route: Route }) {
           <div className="form">
             <Field id="fa" label="Cuenta">{(p) => <select {...p} className="input" value={acc} onChange={(e) => setQuery('acc', e.target.value)}><option value="">Todas</option>{s.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</Field>
             <Field id="fc" label="Categoría">{(p) => <select {...p} className="input" value={cat} onChange={(e) => setQuery('cat', e.target.value)}><option value="">Todas</option>{s.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}</Field>
+            <div className="field"><span className="lbl">Tipo</span><div className="chips wrap">{[['', 'Todos'], ['out', 'Gastos'], ['in', 'Ingresos']].map(([v, l]) => <Chip key={v} selected={type === v} onClick={() => setQuery('type', v)}>{l}</Chip>)}</div></div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <Field id="fd" label="Desde el día">{(p) => <input {...p} className="input" type="date" value={from} max={to || undefined} onChange={(e) => setQuery('from', e.target.value)} />}</Field>
+              <Field id="fh" label="Hasta el día">{(p) => <input {...p} className="input" type="date" value={to} min={from || undefined} onChange={(e) => setQuery('to', e.target.value)} />}</Field>
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <Field id="fm" label="Importe desde (€)" error={minC === null ? 'No es un importe válido.' : undefined}>{(p) => <input {...p} className="input num" inputMode="decimal" placeholder="0,00" defaultValue={minT} onChange={(e) => setQuery('min', e.target.value.trim())} />}</Field>
+              <Field id="fx" label="Importe hasta (€)" error={maxC === null ? 'No es un importe válido.' : undefined}>{(p) => <input {...p} className="input num" inputMode="decimal" placeholder="sin límite" defaultValue={maxT} onChange={(e) => setQuery('max', e.target.value.trim())} />}</Field>
+            </div>
+            {badRange ? <Banner tone="warn">El inicio del rango es posterior al final: no habrá resultados.</Banner> : null}
+            <p className="hint" style={{ margin: 0 }}>El rango de importe mira el valor sin signo: de 50 a 100 € incluye un gasto de −75 € y un ingreso de +75 €.</p>
             <div className="field"><span className="lbl">Estado</span><div className="chips wrap">{[['', 'Todos'], ['uncat', 'Sin categoría'], ['hidden', 'Ocultas']].map(([v, l]) => <Chip key={v} selected={status === v} onClick={() => setQuery('st', v)}>{l}</Chip>)}</div></div>
             <div className="btnrow"><Button variant="secondary" onClick={() => { location.hash = '#/transactions'; setFilters(false); }}>Quitar filtros</Button><Button onClick={() => setFilters(false)}>Ver resultados</Button></div>
           </div>

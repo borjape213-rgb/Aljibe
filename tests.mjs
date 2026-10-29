@@ -490,3 +490,20 @@ console.log('valores en otra moneda ok');
   st.rules = [{ id: 'a', merchantContains: 'x', amountCents: 5, amountDirection: 'sideways' }]; assert.ok(!normalizeState(st).ok);
 }
 console.log('reglas con importe ok');
+
+{
+  const { filterTransactions, sortTransactions, parseAbsAmount } = await import('./src/logic/txfilter.ts');
+  const T = (id, date, amountCents, merchant = 'X', extra = {}) => ({ id, date, amountCents, merchant, notes: '', accountId: 'a1', categoryId: 'c1', splits: [], ...extra });
+  const txs = [T('1', '2026-03-01', -5000), T('2', '2026-03-10', 7500), T('3', '2026-03-10', -7500), T('4', '2026-04-01', -100), T('5', '2026-02-15', 120000)];
+  const ids = (a) => a.map((t) => t.id).join(',');
+  assert.equal(ids(filterTransactions(txs, { type: 'out' })), '1,3,4'); assert.equal(ids(filterTransactions(txs, { type: 'in' })), '2,5');
+  assert.equal(ids(filterTransactions(txs, { from: '2026-03-01', to: '2026-03-10' })), '1,2,3', 'rango de fechas inclusivo');
+  assert.equal(ids(filterTransactions(txs, { from: '2026-03-10' })), '2,3,4'); assert.equal(ids(filterTransactions(txs, { to: '2026-02-28' })), '5');
+  assert.equal(ids(filterTransactions(txs, { minCents: 5000, maxCents: 7500 })), '1,2,3', 'importe sin signo, límites inclusivos');
+  assert.equal(ids(filterTransactions(txs, { type: 'out', minCents: 5000 })), '1,3'); assert.equal(ids(filterTransactions(txs, { minCents: 200000 })), '');
+  assert.equal(ids(sortTransactions(txs, 'amount-desc')), '5,2,3,1,4', 'mayor importe primero; empate por fecha reciente'); // 2 y 3 empatan, mismo día: estable
+  assert.equal(ids(sortTransactions(txs, 'amount-asc')), '4,1,2,3,5'); assert.equal(ids(sortTransactions(txs, 'date-asc')), '5,1,2,3,4'); assert.equal(ids(sortTransactions(txs, 'date-desc')), '4,2,3,1,5');
+  assert.equal(ids(txs), '1,2,3,4,5', 'no modifica la lista original');
+  assert.equal(parseAbsAmount(''), undefined); assert.equal(parseAbsAmount('12,5'), 1250); assert.equal(parseAbsAmount('-3'), 300); assert.equal(parseAbsAmount('abc'), null);
+}
+console.log('filtros de movimientos ok');

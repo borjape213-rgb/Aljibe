@@ -20,9 +20,9 @@ export function useNames(s: State) {
   return { cat: (id: Id) => cats.get(id)?.name ?? 'Sin categoría', group: (id: Id) => groups.get(cats.get(id)?.groupId ?? '')?.name ?? '', acc: (id: Id) => accs.get(id)?.name ?? 'Cuenta borrada' };
 }
 
-export function TxRow({ t, s, showAccount = false, selectable, selected, onToggle }: { t: Transaction; s: State; showAccount?: boolean; selectable?: boolean; selected?: boolean; onToggle?: () => void }) {
+export function TxRow({ t, s, showAccount = false, showDate = false, selectable, selected, onToggle }: { t: Transaction; s: State; showAccount?: boolean; showDate?: boolean; selectable?: boolean; selected?: boolean; onToggle?: () => void }) {
   const n = useNames(s);
-  const sub = [t.splits.length ? `${t.splits.length} partes` : n.cat(t.categoryId), showAccount ? n.acc(t.accountId) : null].filter(Boolean).join(' · ');
+  const sub = [t.splits.length ? `${t.splits.length} partes` : n.cat(t.categoryId), showAccount ? n.acc(t.accountId) : null, showDate ? formatShort(t.date) : null].filter(Boolean).join(' · ');
   const body = (
     <>
       {selectable ? <input type="checkbox" checked={!!selected} onChange={onToggle} aria-label={`Seleccionar ${t.merchant}`} style={{ width: 22, height: 22 }} onClick={(e) => e.stopPropagation()} /> : null}
@@ -41,7 +41,9 @@ export function TxRow({ t, s, showAccount = false, selectable, selected, onToggl
   return selectable ? <label className="row" style={{ cursor: 'pointer' }}>{body}</label> : <a className="row" href={`#/transaction/${t.id}`}>{body}</a>;
 }
 
-export function DayGroups({ items, s, showAccount, selectable, selected, onToggle }: { items: Transaction[]; s: State; showAccount?: boolean; selectable?: boolean; selected?: Set<Id>; onToggle?: (id: Id) => void }) {
+export function DayGroups({ items, s, showAccount, flat, selectable, selected, onToggle }: { items: Transaction[]; s: State; showAccount?: boolean; flat?: boolean; selectable?: boolean; selected?: Set<Id>; onToggle?: (id: Id) => void }) {
+  // flat: una sola lista en el orden recibido, con la fecha en cada fila (para ordenar por importe)
+  if (flat) return <section className="card" aria-label="Transacciones">{items.map((t) => <TxRow key={t.id} t={t} s={s} showAccount={showAccount} showDate selectable={selectable} selected={selected?.has(t.id)} onToggle={() => onToggle?.(t.id)} />)}</section>;
   const byDay = new Map<string, Transaction[]>();
   for (const t of items) byDay.set(t.date, [...(byDay.get(t.date) ?? []), t]);
   return (
