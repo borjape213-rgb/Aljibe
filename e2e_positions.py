@@ -43,6 +43,16 @@ with sync_playwright() as p:
     pg.get_by_role('button', name='Guardar').click(); pg.wait_for_timeout(500)
     check('sin precio de compra no hay coste', pg.evaluate(READ)['holdings'][-1]['costBasisCents'] is None)
 
+    # al abrir una cuenta de inversión salen primero sus posiciones, sin transacciones
+    pg.goto(U + '#/accounts?tab=investments'); pg.wait_for_selector('text=Cartera de fondos')
+    pg.get_by_text('Cartera de fondos').first.click(); pg.wait_for_selector('section[aria-label="Posiciones de la cuenta"]')
+    sec_txt = pg.locator('section[aria-label="Posiciones de la cuenta"]').inner_text()
+    check('la cuenta de inversión muestra sus posiciones con precios y ganancia', 'Fondo Mundo Índice' in sec_txt and 'compra' in sec_txt and 'actual' in sec_txt)
+    check('y no muestra transacciones ni «sin transacciones»', pg.get_by_text('Transacciones', exact=True).count() == 0 and pg.get_by_text('Sin transacciones').count() == 0)
+    pg.get_by_role('button', name='Añadir', exact=True).click()
+    check('«Añadir» abre el formulario con esa cuenta', pg.get_by_label('Cuenta').locator('option:checked').inner_text() == 'Cartera de fondos')
+    pg.get_by_role('button', name='Cancelar').click()
+
     # S&P 500 de la captura: 63 uds, precio actual 203, compra 117,828
     ctx.close(); ctx = b.new_context(viewport={'width': 390, 'height': 844}, locale='es-ES', timezone_id='Europe/Madrid'); pg = ctx.new_page(); pg.set_default_timeout(5000)
     pg.on('pageerror', lambda e: errs.append(str(e)))

@@ -17,7 +17,7 @@ const unit = (n: number, cur: string) => n.toLocaleString('es-ES', { style: 'cur
 const qtyText = (q: number) => q.toLocaleString('es-ES', { maximumFractionDigits: 6 });
 
 /** Cantidad, precio unitario de compra y actual a la izquierda; valor total, ganancia o pérdida y % a la derecha. */
-function PositionInfo({ r, sub }: { r: HoldingRow; sub: string }) {
+export function PositionInfo({ r, sub }: { r: HoldingRow; sub: string }) {
   const cur = r.currency;
   const g = r.gainCents, up = g !== null && g >= 0;
   const pct = r.gainPct === null ? '' : `${r.gainPct >= 0 ? '+' : '−'}${Math.abs(r.gainPct).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
@@ -114,11 +114,11 @@ export function Investments({ route }: { route: Route }) {
 
 const plain = (n: number) => String(Math.round(n * 1e6) / 1e6).replace('.', ',');
 
-function HoldingForm({ onClose, securityId, holding }: { onClose: () => void; securityId?: string; holding?: Holding }) {
+export function HoldingForm({ onClose, securityId, holding, accountId }: { onClose: () => void; securityId?: string; holding?: Holding; accountId?: string }) {
   const s = useData();
   const editing = !!holding;
   const accounts = s.accounts.filter((a) => a.group === 'investments');
-  const [account, setAccount] = useState(holding?.accountId ?? accounts[0]?.id ?? '');
+  const [account, setAccount] = useState(holding?.accountId ?? (accountId && accounts.some((x) => x.id === accountId) ? accountId : accounts[0]?.id) ?? '');
   const [sec, setSec] = useState(holding?.securityId ?? securityId ?? s.securities[0]?.id ?? '__new');
   const [qty, setQty] = useState(holding ? plain(holding.quantity) : '');
   const hsec = holding ? s.securities.find((x) => x.id === holding.securityId) : undefined;

@@ -11,6 +11,8 @@ import { Amount, Avatar, Banner, Button, Change, EmptyState, Field, IconButton, 
 import { AreaChart, CHART_COLORS, Sparkline, StackedBar } from '../charts.tsx';
 import { TopBar } from './shell.tsx';
 import { DayGroups, relTime } from './common.tsx';
+import { HoldingForm, PositionInfo } from './investments.tsx';
+import { holdingRows } from '../logic/invest.ts';
 import { deleteAccount, saveAccount, ValidationError } from '../actions.ts';
 
 const RANGES = [{ id: '1m', label: '1M', days: 30 }, { id: '3m', label: '3M', days: 91 }, { id: '6m', label: '6M', days: 182 }, { id: '1y', label: '1A', days: 365 }, { id: 'all', label: 'Todo', days: 399 }] as const;
@@ -163,6 +165,7 @@ export function AccountDetail({ id, route }: { id: string; route: Route }) {
   const a = s.accounts.find((x) => x.id === id);
   const [edit, setEdit] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [addPos, setAddPos] = useState(false);
   const rangeId = route.query.get('range') || '3m';
   const days = RANGES.find((r) => r.id === rangeId)?.days ?? 91;
   const today = todayISO();
@@ -173,6 +176,8 @@ export function AccountDetail({ id, route }: { id: string; route: Route }) {
   const txs = s.transactions.filter((t) => t.accountId === a.id).slice(0, 40);
   const liab = a.group === 'credit' || a.group === 'loans';
   const manual = a.group === 'lent';
+  const invest = a.group === 'investments';
+  const positions = invest ? holdingRows(s, [a.id], days) : [];
   return (
     <>
       <TopBar title={a.name} back="/accounts" end={<Button variant="ghost" onClick={() => setEdit(true)}>Editar</Button>} />
@@ -183,15 +188,23 @@ export function AccountDetail({ id, route }: { id: string; route: Route }) {
           <Change pct={ch.pct} cents={ch.delta} label={RANGE_TEXT[rangeId]} />
           <AreaChart points={series} label={`Saldo de ${a.name}`} />
           <Ranges value={rangeId as 'all'} onChange={(v) => setQuery('range', v === '3m' ? null : v)} options={RANGES.map((r) => ({ id: r.id, label: r.label }))} />
-          <p className="xs muted" style={{ textAlign: 'center' }}>Actualizada {relTime(a.updatedAt)} · manual</p>
+          <p className="xs muted" style={{ textAlign: 'center' }}>{invest ? 'Suma de tus posiciones' : <>Actualizada {relTime(a.updatedAt)} · manual</>}</p>
         </section>
         {manual ? <Button variant="secondary" onClick={() => setEdit(true)}>Actualizar saldo</Button> : null}
-        {a.group === 'investments' ? <a className="btn secondary" href="#/investments">Ver posiciones</a> : null}
-        {manual ? null : <h2 className="sm b6" style={{ margin: '4px 4px 0' }}>Transacciones</h2>}
-        {manual ? null : txs.length === 0 ? <EmptyState title="Sin transacciones" text={a.group === 'assets' ? 'Los bienes se valoran a mano: edita la cuenta para guardar una nueva valoración.' : 'Esta cuenta no tiene movimientos todavía.'} /> : <DayGroups items={txs} s={s} />}
+        {invest ? (
+          <section className="card" aria-label="Posiciones de la cuenta">
+            <div className="sechead"><span>Posiciones</span><Button variant="ghost" onClick={() => setAddPos(true)}>Añadir</Button></div>
+            {positions.length === 0 ? <p className="sm muted" style={{ padding: 16, margin: 0 }}>Esta cuenta no tiene posiciones todavía.</p> : positions.map((r) => (
+              <a key={r.holding.id} className="row" href={`#/holding/${r.holding.securityId}`}><PositionInfo r={r} sub={r.ticker} /></a>
+            ))}
+          </section>
+        ) : null}
+        {manual || invest ? null : <h2 className="sm b6" style={{ margin: '4px 4px 0' }}>Transacciones</h2>}
+        {manual || invest ? null : txs.length === 0 ? <EmptyState title="Sin transacciones" text={a.group === 'assets' ? 'Los bienes se valoran a mano: edita la cuenta para guardar una nueva valoración.' : 'Esta cuenta no tiene movimientos todavía.'} /> : <DayGroups items={txs} s={s} />}
         <Button variant="danger" onClick={() => setConfirm(true)}><LuTrash2 aria-hidden="true" size={18} />Borrar cuenta</Button>
       </main>
       {edit ? <AccountForm account={a} onClose={() => setEdit(false)} /> : null}
+      {addPos ? <HoldingForm accountId={a.id} onClose={() => setAddPos(false)} /> : null}
       {confirm ? (
         <Sheet title="¿Borrar esta cuenta?" onClose={() => setConfirm(false)}>
           <p>Se borrarán también sus {s.transactions.filter((t) => t.accountId === a.id).length} transacciones y posiciones. No se puede deshacer; haz antes una copia de seguridad si no estás seguro.</p>
