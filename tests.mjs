@@ -370,3 +370,17 @@ console.log('actualización de precios ok');
   assert.equal(n.state.accounts.find((a) => a.group === 'investments' && a.subtype !== 'Loans').group, 'investments');
 }
 console.log('cuentas Loans ok');
+
+// posiciones: precio unitario de compra y actual
+{
+  const st = buildSeed();
+  const h = st.holdings.find((x) => x.costBasisCents !== null), nocost = st.holdings.find((x) => x.costBasisCents === null);
+  const rows = holdingRows(st, null, 30);
+  const r = rows.find((x) => x.holding.id === h.id);
+  assert.ok(Math.abs(r.unitCost * h.quantity * 100 - h.costBasisCents) < 1e-6, 'coste unitario × cantidad = coste total');
+  assert.ok(r.unitPrice > 0 && Math.abs(r.unitPrice * h.quantity * 100 - r.valueCents) <= 50 + 1e-6, 'valor = cantidad × precio actual');
+  assert.equal(rows.find((x) => x.holding.id === nocost.id).unitCost, null);
+  // el coste total sale de cantidad × precio unitario, redondeado a céntimos
+  assert.equal(Math.round(85.5 * 133.436752 * 100), 1140884);
+}
+console.log('posiciones: precios unitarios ok');

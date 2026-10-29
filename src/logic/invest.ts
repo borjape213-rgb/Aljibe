@@ -15,6 +15,10 @@ export interface HoldingRow {
   periodPct: number;
   gainCents: number | null;
   gainPct: number | null;
+  /** Precio unitario actual. */
+  unitPrice: number;
+  /** Precio unitario medio de compra (coste total / cantidad), o null si no se indicó el coste. */
+  unitCost: number | null;
 }
 
 export function holdingRows(s: State, accountIds: Id[] | null, days: number, today = todayISO()): HoldingRow[] {
@@ -27,7 +31,7 @@ export function holdingRows(s: State, accountIds: Id[] | null, days: number, tod
     const f = priceLookup(s.prices[h.securityId]);
     const valueCents = Math.round(h.quantity * f(today) * 100);
     const p0 = f(from), p1 = f(today);
-    rows.push({ holding: h, name: sec.name, ticker: sec.ticker, assetClass: sec.assetClass, valueCents, periodPct: p0 ? (p1 / p0 - 1) * 100 : 0, gainCents: h.costBasisCents === null ? null : valueCents - h.costBasisCents, gainPct: h.costBasisCents ? ((valueCents - h.costBasisCents) / h.costBasisCents) * 100 : null });
+    rows.push({ holding: h, name: sec.name, ticker: sec.ticker, assetClass: sec.assetClass, valueCents, periodPct: p0 ? (p1 / p0 - 1) * 100 : 0, gainCents: h.costBasisCents === null ? null : valueCents - h.costBasisCents, gainPct: h.costBasisCents ? ((valueCents - h.costBasisCents) / h.costBasisCents) * 100 : null, unitPrice: f(today), unitCost: h.costBasisCents === null || !(h.quantity > 0) ? null : h.costBasisCents / 100 / h.quantity });
   }
   return rows.sort((a, b) => b.valueCents - a.valueCents);
 }

@@ -3,16 +3,39 @@ import { LuPlus, LuTrash2 } from 'react-icons/lu';
 import type { Route } from '../router.tsx';
 import { setQuery } from '../router.tsx';
 import { useData } from '../store.ts';
-import { RANGES, allocation, holdingRows, pctSeries, portfolioPctSeries, portfolioReturn, CLASS_LABEL } from '../logic/invest.ts';
+import { RANGES, allocation, holdingRows, type HoldingRow, pctSeries, portfolioPctSeries, portfolioReturn, CLASS_LABEL } from '../logic/invest.ts';
 import { addDays, todayISO } from '../logic/dates.ts';
 import { priceLookup } from '../logic/ledger.ts';
-import { parseCents } from '../logic/money.ts';
 import type { AssetClass } from '../logic/types.ts';
 import { Amount, Banner, Button, Change, EmptyState, Field, IconButton, Ranges, Segmented, Sheet, money, toast } from '../ui.tsx';
 import { AreaChart, CHART_COLORS, StackedBar } from '../charts.tsx';
 import { TopBar } from './shell.tsx';
 import { PriceUpdate, SymbolSheet, fmtStamp } from './priceupdate.tsx';
 import { addPrice, removeHolding, saveHolding, saveSecurity, ValidationError } from '../actions.ts';
+
+const unit = (n: number, cur: string) => n.toLocaleString('es-ES', { style: 'currency', currency: cur, minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const qtyText = (q: number) => q.toLocaleString('es-ES', { maximumFractionDigits: 6 });
+
+/** Cantidad, precio unitario de compra y actual a la izquierda; valor total, ganancia o pérdida y % a la derecha. */
+function PositionInfo({ r, cur, sub }: { r: HoldingRow; cur: string; sub: string }) {
+  const g = r.gainCents, up = g !== null && g >= 0;
+  const pct = r.gainPct === null ? '' : `${r.gainPct >= 0 ? '+' : '−'}${Math.abs(r.gainPct).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
+  return (
+    <>
+      <span className="grow"><span className="title" style={{ display: 'block' }}>{r.name}</span>
+        <span className="xs muted" style={{ display: 'block' }}>{sub}</span>
+        <span className="xs muted num" style={{ display: 'block' }}><span style={{ whiteSpace: 'nowrap' }}>{qtyText(r.holding.quantity)} uds</span> · <span style={{ whiteSpace: 'nowrap' }}>compra {r.unitCost === null ? '—' : unit(r.unitCost, cur)}</span> · <span style={{ whiteSpace: 'nowrap' }}>actual {unit(r.unitPrice, cur)}</span></span>
+      </span>
+      <span className="end" style={{ textAlign: 'right' }}>
+        <b className="num"><Amount cents={r.valueCents} tone="none" /></b><br />
+        {g === null ? <span className="xs muted">sin coste</span> : <>
+          <span className={`xs num ${up ? 'pos' : 'neg'}`} aria-label={`${up ? 'ganancia' : 'pérdida'} ${money(Math.abs(g))}`}><span aria-hidden="true">{up ? '+' : '−'}{money(Math.abs(g))}</span></span><br />
+          <span className={`xs num ${up ? 'pos' : 'neg'}`} aria-hidden="true">({pct})</span>
+        </>}
+      </span>
+    </>
+  );
+}
 
 const num = (x: string) => { const n = Number(x.replace(',', '.')); return Number.isFinite(n) ? n : NaN; };
 
@@ -60,8 +83,7 @@ export function Investments({ route }: { route: Route }) {
                 <section className="card" aria-label="Posiciones">
                   {rows.map((r) => (
                     <a key={r.holding.id} className="row" href={`#/holding/${r.holding.securityId}`}>
-                      <span className="grow"><span className="title">{r.name}</span><span className="xs muted">{r.ticker} · {r.holding.quantity.toLocaleString('es-ES')} uds · {s.accounts.find((a) => a.id === r.holding.accountId)?.name}</span></span>
-                      <span className="end"><Amount cents={r.valueCents} tone="none" /><br /><Change pct={r.periodPct} pill /></span>
+                      <PositionInfo r={r} cur={s.settings.currency || 'EUR'} sub={`${r.ticker} · ${s.accounts.find((a) => a.id === r.holding.accountId)?.name ?? ''}`} />
                     </a>
                   ))}
                 </section>
@@ -94,16 +116,19 @@ function HoldingForm({ onClose, securityId }: { onClose: () => void; securityId?
   const [account, setAccount] = useState(accounts[0]?.id ?? '');
   const [sec, setSec] = useState(securityId ?? s.securities[0]?.id ?? '__new');
   const [qty, setQty] = useState('');
-  const [cost, setCost] = useState('');
+  const [unitCost, setUnitCost] = useState('');
   const [name, setName] = useState(''); const [ticker, setTicker] = useState(''); const [cls, setCls] = useState<AssetClass>('equity'); const [price, setPrice] = useState(''); const [symbol, setSymbol] = useState(''); const [cur, setCur] = useState('EUR');
   const [err, setErr] = useState<Record<string, string>>({});
+  const qn = num(qty), un = unitCost.trim() === '' ? NaN : num(unitCost);
+  const total = qn > 0 && un >= 0 ? Math.round(qn * un * 100) : null;
   if (!accounts.length) return <Sheet title="Añadir posición" onClose={onClose}><Banner tone="warn">Crea primero una cuenta de tipo Inversiones.</Banner></Sheet>;
   const submit = async () => {
     const e: Record<string, string> = {};
     const q = num(qty);
     if (!(q > 0)) e.qty = 'Escribe una cantidad mayor que cero.';
-    const c = cost.trim() === '' ? null : parseCents(cost);
-    if (cost.trim() !== '' && (c === null || c < 0)) e.cost = 'Escribe un coste válido o déjalo vacío.';
+    const uc = unitCost.trim() === '' ? null : num(unitCost);
+    if (uc !== null && !(uc >= 0)) e.cost = 'Escribe un precio de compra válido o déjalo vacío.';
+    const c = uc === null || !(q > 0) ? null : Math.round(q * uc * 100);
     if (sec === '__new') { if (!name.trim() || !ticker.trim()) e.name = 'Escribe nombre y símbolo.'; if (!(num(price) > 0)) e.price = 'Escribe el precio actual.'; }
     setErr(e);
     if (Object.keys(e).length) return;
@@ -126,8 +151,8 @@ function HoldingForm({ onClose, securityId }: { onClose: () => void; securityId?
           <Field id="hc" label="Tipo de activo">{(p) => <select {...p} className="input" value={cls} onChange={(e) => setCls(e.target.value as AssetClass)}>{(Object.keys(CLASS_LABEL) as AssetClass[]).map((k) => <option key={k} value={k}>{CLASS_LABEL[k]}</option>)}</select>}</Field>
           <Field id="hp" label="Precio actual" error={err.price}>{(p) => <input {...p} className="input num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />}</Field>
         </> : null}
-        <Field id="hq" label="Cantidad" error={err.qty}>{(p) => <input {...p} className="input num" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />}</Field>
-        <Field id="hk" label="Coste total (opcional)" error={err.cost} hint="Sirve para ver ganancia o pérdida.">{(p) => <input {...p} className="input num" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} />}</Field>
+        <Field id="hq" label="Cantidad (unidades)" error={err.qty}>{(p) => <input {...p} className="input num" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />}</Field>
+        <Field id="hk" label="Precio de compra por unidad (opcional)" error={err.cost} hint={total === null ? 'El coste total se calcula solo (cantidad × precio). Sirve para ver ganancia o pérdida.' : `Coste total: ${money(total)}`}>{(p) => <input {...p} className="input num" inputMode="decimal" value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />}</Field>
         <div className="btnrow"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit">Guardar</Button></div>
       </form>
     </Sheet>
@@ -167,8 +192,7 @@ export function HoldingDetail({ id }: { id: string }) {
           <div className="sechead"><span>Tus posiciones</span><Amount cents={total} tone="none" /></div>
           {rows.length === 0 ? <p className="sm muted" style={{ padding: 16, margin: 0 }}>No tienes posiciones de este valor.</p> : rows.map((r) => (
             <div key={r.holding.id} className="row">
-              <span className="grow"><span className="title">{s.accounts.find((a) => a.id === r.holding.accountId)?.name}</span><span className="xs muted">{r.holding.quantity.toLocaleString('es-ES')} uds{r.gainCents !== null ? ` · ${r.gainCents >= 0 ? 'ganancia' : 'pérdida'} ${money(Math.abs(r.gainCents))}` : ' · sin coste base'}</span></span>
-              <Amount cents={r.valueCents} tone="none" />
+              <PositionInfo r={r} cur={s.settings.currency || 'EUR'} sub={s.accounts.find((a) => a.id === r.holding.accountId)?.name ?? ''} />
               <IconButton label={`Quitar posición en ${s.accounts.find((a) => a.id === r.holding.accountId)?.name}`} onClick={async () => { await removeHolding(r.holding.id); toast('Posición quitada'); }}><LuTrash2 /></IconButton>
             </div>
           ))}
