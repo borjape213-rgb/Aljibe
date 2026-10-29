@@ -427,3 +427,38 @@ console.log('posiciones: precios unitarios ok');
   assert.equal(netWorthSeries(rs, addDays(today, -1), today).at(-1).net, sum, 'el patrimonio es la suma');
 }
 console.log('cálculo de posiciones ok');
+
+// ---- valores en otra moneda (p. ej. NVIDIA en USD): se escriben y se ven en su moneda; totales y ganancia en euros ----
+{
+  const { currentFx, isForeign } = await import('./src/logic/invest.ts');
+  const { fetchRate } = await import('./src/logic/quotes.ts');
+  const mk = (sec, hold) => {
+    const st = buildSeed(); st.settings = { ...st.settings, currency: 'EUR' };
+    st.accounts = [{ id: 'A', name: 'B', group: 'investments', subtype: 'Fondos', balanceCents: 0, currency: 'EUR', hidden: false, updatedAt: '2026-10-29T00:00:00' }];
+    st.securities = [{ id: 'n', ticker: 'NVDA', name: 'NVIDIA', assetClass: 'equity', ...sec }];
+    st.prices = { n: [{ date: today, price: 180 }] }; // guardado en euros: 200 USD × 0,9
+    st.holdings = [{ id: 'h', accountId: 'A', securityId: 'n', quantity: 10, costBasisCents: 0, ...hold }];
+    return st;
+  };
+  const usd = { currency: 'USD', fxRate: 0.9 };
+  const a = holdingRows(mk(usd, { unitCost: 150, costBasisCents: 135000 }), null, 30)[0];
+  assert.equal(a.currency, 'USD'); assert.equal(a.unitPrice, 200); assert.equal(a.unitCost, 150); assert.equal(a.valueCents, 180000);
+  assert.equal(a.gainCents, 180000 - 135000, 'sin cambio de compra se usa el actual (150 USD × 0,9)');
+  const b = holdingRows(mk(usd, { unitCost: 150, costFx: 0.92, costBasisCents: 138000 }), null, 30)[0];
+  assert.equal(b.gainCents, 180000 - 138000, 'con el cambio de la compra: 10 × 150 × 0,92 = 1.380 €'); assert.equal(b.unitCost, 150, 'el precio de compra se enseña en dólares');
+  // el valor no depende del cambio de compra
+  assert.equal(a.valueCents, b.valueCents);
+  // sin cambio conocido: avisa y trata los importes como ya convertidos
+  const m = holdingRows(mk({ currency: 'USD' }, { unitCost: 150, costBasisCents: 150000 }), null, 30)[0];
+  assert.equal(m.fxMissing, true); assert.equal(m.currency, 'EUR'); assert.equal(m.unitPrice, 180);
+  // en euros no cambia nada
+  const e = holdingRows(mk({ currency: 'EUR' }, { unitCost: 150, costBasisCents: 150000 }), null, 30)[0];
+  assert.equal(e.fxMissing, false); assert.equal(e.currency, 'EUR'); assert.equal(e.unitPrice, 180);
+  assert.equal(currentFx(mk(usd, {}), { currency: 'USD', fxRate: 0.9 }), 0.9); assert.equal(currentFx(mk(usd, {}), { currency: 'EUR' }), 1); assert.equal(currentFx(mk(usd, {}), { currency: 'USD' }), null);
+  assert.ok(isForeign(mk(usd, {}), { currency: 'usd' })); assert.ok(!isForeign(mk(usd, {}), {}));
+  // lectura del cambio con el proveedor simulado
+  const f = async () => ({ ok: true, json: async () => ({ rate: 0.91 }) });
+  assert.deepEqual(await fetchRate('USD', 'EUR', f), { ok: true, value: 0.91 });
+  assert.equal((await fetchRate('USD', 'EUR', async () => { throw new Error('sin red'); })).ok, false);
+}
+console.log('valores en otra moneda ok');

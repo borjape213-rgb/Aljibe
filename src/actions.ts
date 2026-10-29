@@ -209,27 +209,40 @@ export async function copyBudget(fromMonth: string, toMonth: string): Promise<nu
   return src.length;
 }
 
-export async function saveHolding(h: { id?: Id; accountId: Id; securityId: Id; quantity: number; costBasisCents: number | null; unitCost?: number | null }): Promise<void> {
+export async function saveHolding(h: { id?: Id; accountId: Id; securityId: Id; quantity: number; costBasisCents: number | null; unitCost?: number | null; costFx?: number | null }): Promise<void> {
   if (!(h.quantity > 0)) throw new ValidationError('La cantidad debe ser mayor que cero.');
   if (h.costBasisCents !== null && h.costBasisCents < 0) throw new ValidationError('El coste no puede ser negativo.');
   if (h.unitCost !== undefined && h.unitCost !== null && !(h.unitCost >= 0)) throw new ValidationError('El precio de compra no puede ser negativo.');
-  mutate((s) => ({ ...s, holdings: h.id ? s.holdings.map((x) => (x.id === h.id ? { ...x, ...h, id: h.id! } : x)) : [...s.holdings, { id: uid('h'), accountId: h.accountId, securityId: h.securityId, quantity: h.quantity, costBasisCents: h.costBasisCents, unitCost: h.unitCost ?? null }] }));
+  if (h.costFx !== undefined && h.costFx !== null && !(h.costFx > 0)) throw new ValidationError('El cambio de la compra debe ser mayor que cero.');
+  mutate((s) => ({ ...s, holdings: h.id ? s.holdings.map((x) => (x.id === h.id ? { ...x, ...h, id: h.id! } : x)) : [...s.holdings, { id: uid('h'), accountId: h.accountId, securityId: h.securityId, quantity: h.quantity, costBasisCents: h.costBasisCents, unitCost: h.unitCost ?? null, costFx: h.costFx ?? null }] }));
 }
 export async function removeHolding(id: Id) { mutate((s) => ({ ...s, holdings: s.holdings.filter((h) => h.id !== id) })); }
-export async function saveSecurity(x: { ticker: string; name: string; assetClass: State['securities'][number]['assetClass']; price: number; date: string; symbol?: string; currency?: string }): Promise<Id> {
+export async function saveSecurity(x: { ticker: string; name: string; assetClass: State['securities'][number]['assetClass']; price: number; date: string; symbol?: string; currency?: string; fxRate?: number }): Promise<Id> {
   if (!x.name.trim() || !x.ticker.trim()) throw new ValidationError('Escribe nombre y símbolo.');
   if (!(x.price > 0)) throw new ValidationError('El precio debe ser mayor que cero.');
   if (x.currency && !/^[A-Z]{3}$/.test(x.currency)) throw new ValidationError('La moneda debe ser un código de tres letras (EUR, USD…).');
   const id = uid('s');
-  mutate((s) => ({ ...s, securities: [...s.securities, { id, ticker: x.ticker.trim().toUpperCase(), name: x.name.trim(), assetClass: x.assetClass, symbol: x.symbol?.trim().toUpperCase() || undefined, currency: x.currency || undefined }], prices: { ...s.prices, [id]: [{ date: x.date, price: x.price }] } }));
+  mutate((s) => ({ ...s, securities: [...s.securities, { id, ticker: x.ticker.trim().toUpperCase(), name: x.name.trim(), assetClass: x.assetClass, symbol: x.symbol?.trim().toUpperCase() || undefined, currency: x.currency || undefined, fxRate: x.fxRate && x.fxRate > 0 ? x.fxRate : undefined, fxDate: x.fxRate && x.fxRate > 0 ? x.date : undefined }], prices: { ...s.prices, [id]: [{ date: x.date, price: x.price }] } }));
   return id;
 }
-export async function setSecurityQuoteInfo(id: Id, symbol: string, currency: string): Promise<void> {
+/**
+ * Símbolo, moneda y cambio actual de un valor. `convertStored`: los precios que ya había guardados estaban en la moneda del valor
+ * (se escribieron antes de que la app supiera de monedas) y se convierten con el cambio indicado.
+ */
+export async function setSecurityQuoteInfo(id: Id, symbol: string, currency: string, fxRate?: number, convertStored = false): Promise<void> {
   if (!/^[A-Z]{3}$/.test(currency)) throw new ValidationError('La moneda debe ser un código de tres letras (EUR, USD…).');
-  mutate((s) => ({ ...s, securities: s.securities.map((x) => (x.id === id ? { ...x, symbol: symbol.trim().toUpperCase() || undefined, currency } : x)) }));
+  if (fxRate !== undefined && !(fxRate > 0)) throw new ValidationError('El cambio debe ser mayor que cero.');
+  const base = (getState().settings.currency || 'EUR').toUpperCase();
+  if (currency !== base && fxRate === undefined && !getState().securities.find((x) => x.id === id)?.fxRate) throw new ValidationError(`Indica el cambio actual: cuántos ${base} vale 1 ${currency}.`);
+  const today = new Date().toISOString().slice(0, 10);
+  mutate((s) => ({
+    ...s,
+    prices: convertStored && fxRate ? { ...s.prices, [id]: (s.prices[id] ?? []).map((p) => ({ ...p, price: p.price * fxRate })) } : s.prices,
+    securities: s.securities.map((x) => (x.id === id ? { ...x, symbol: symbol.trim().toUpperCase() || undefined, currency, fxRate: currency === base ? undefined : fxRate ?? x.fxRate, fxDate: currency === base ? undefined : fxRate ? today : x.fxDate } : x)),
+  }));
 }
 /** Guarda los precios obtenidos de internet (ya convertidos a la moneda base) y anota cuándo se actualizó cada valor. */
-export async function applyQuotes(rows: { id: Id; date: string; price: number }[]): Promise<number> {
+export async function applyQuotes(rows: { id: Id; date: string; price: number; rate?: number }[]): Promise<number> {
   const valid = rows.filter((r) => r.price > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.date));
   if (!valid.length) return 0;
   const now = new Date().toISOString();
@@ -237,7 +250,7 @@ export async function applyQuotes(rows: { id: Id; date: string; price: number }[
     const prices = { ...s.prices };
     for (const r of valid) prices[r.id] = [...(prices[r.id] ?? []).filter((p) => p.date !== r.date), { date: r.date, price: r.price }].sort((a, b) => (a.date < b.date ? -1 : 1));
     const ids = new Set(valid.map((r) => r.id));
-    return { ...s, prices, securities: s.securities.map((x) => (ids.has(x.id) ? { ...x, updatedAt: now } : x)) };
+    return { ...s, prices, securities: s.securities.map((x) => { if (!ids.has(x.id)) return x; const r = valid.find((v) => v.id === x.id); return { ...x, updatedAt: now, ...(r?.rate && r.rate !== 1 ? { fxRate: r.rate, fxDate: now.slice(0, 10) } : {}) }; }) };
   });
   return valid.length;
 }

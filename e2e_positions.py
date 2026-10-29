@@ -32,7 +32,7 @@ with sync_playwright() as p:
     pg.get_by_role('button', name='Añadir posición').first.click()
     pg.get_by_label('Valor').select_option(index=0)
     pg.get_by_label('Cantidad (unidades)').fill('10')
-    pg.get_by_label('Precio de compra por unidad (opcional)').fill('5,5')
+    pg.get_by_label(re.compile('Precio de compra por unidad')).fill('5,5')
     check('calcula el coste total al escribir', pg.get_by_text(re.compile(r'Coste total: 55,00')).first.is_visible())
     pg.get_by_role('button', name='Guardar').click(); pg.wait_for_timeout(500)
     st = pg.evaluate(READ)
@@ -53,7 +53,7 @@ with sync_playwright() as p:
     pg.goto(U + '#/investments'); pg.wait_for_timeout(300)
     pg.get_by_role('button', name='Añadir posición').first.click()
     pg.get_by_label('Valor').select_option('__new'); pg.get_by_label('Nombre').fill('Amundi S&P 500'); pg.get_by_label('Símbolo', exact=True).fill('SPX'); pg.get_by_label('Precio actual').fill('203')
-    pg.get_by_label('Cantidad (unidades)').fill('63'); pg.get_by_label('Precio de compra por unidad (opcional)').fill('117,828')
+    pg.get_by_label('Cantidad (unidades)').fill('63'); pg.get_by_label(re.compile('Precio de compra por unidad')).fill('117,828')
     pg.get_by_role('button', name='Guardar').click(); pg.wait_for_timeout(500)
     row = pg.locator('section[aria-label="Posiciones"] a.row').first.inner_text().replace('\u00a0', ' ')
     check('muestra el precio de compra exacto, tal como se escribió', '117,828 €' in row and '203,00 €' in row and '63 uds' in row)
@@ -62,8 +62,8 @@ with sync_playwright() as p:
     # el valor no cambia con el precio de compra; la ganancia sí
     pg.locator('section[aria-label="Posiciones"] a.row').first.click(); pg.wait_for_selector('text=Tus posiciones')
     pg.get_by_role('button', name='Editar', exact=True).click()
-    check('al editar se ven los datos actuales', pg.get_by_label('Cantidad (unidades)').input_value() == '63' and pg.get_by_label('Precio de compra por unidad (opcional)').input_value() == '117,828')
-    pg.get_by_label('Precio de compra por unidad (opcional)').fill('150'); pg.get_by_label('Cantidad (unidades)').fill('60')
+    check('al editar se ven los datos actuales', pg.get_by_label('Cantidad (unidades)').input_value() == '63' and pg.get_by_label(re.compile('Precio de compra por unidad')).input_value() == '117,828')
+    pg.get_by_label(re.compile('Precio de compra por unidad')).fill('150'); pg.get_by_label('Cantidad (unidades)').fill('60')
     pg.get_by_role('button', name='Guardar').click(); pg.wait_for_timeout(500)
     h = pg.evaluate(READ)['holdings'][-1]
     check('la edición guarda cantidad, precio de compra y coste total', h['quantity'] == 60 and h['unitCost'] == 150 and h['costBasisCents'] == 900000)

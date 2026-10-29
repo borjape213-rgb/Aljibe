@@ -15,15 +15,28 @@ export interface HoldingRow {
   periodPct: number;
   gainCents: number | null;
   gainPct: number | null;
-  /** Precio unitario actual. */
+  /** Precio unitario actual, en `currency`. */
   unitPrice: number;
+  /** Moneda de los precios unitarios: la del valor si se conoce el cambio, si no la base. */
+  currency: string;
+  /** El valor cotiza en otra moneda y no se conoce el cambio: sus importes se tratan como si ya estuvieran en la moneda base. */
+  fxMissing: boolean;
   /** Precio unitario medio de compra (coste total / cantidad), o null si no se indicó el coste. */
   unitCost: number | null;
 }
 
-/** Coste total exacto, en céntimos sin redondear: cantidad × precio de compra si se guardó, o el coste total guardado. Null si no hay coste. */
-export function costOf(h: Holding): number | null {
-  if (typeof h.unitCost === 'number' && Number.isFinite(h.unitCost)) return h.quantity * h.unitCost * 100;
+/** El valor cotiza en otra moneda que la base. */
+export const isForeign = (s: State, sec: { currency?: string }) => !!sec.currency && sec.currency.toUpperCase() !== (s.settings.currency || 'EUR').toUpperCase();
+
+/** Cambio actual (moneda base por 1 de la moneda del valor): 1 si cotiza en la base, null si cotiza fuera y no se conoce el cambio. */
+export function currentFx(s: State, sec: { currency?: string; fxRate?: number }): number | null {
+  if (!isForeign(s, sec)) return 1;
+  return typeof sec.fxRate === 'number' && sec.fxRate > 0 ? sec.fxRate : null;
+}
+
+/** Coste total exacto en moneda base, en céntimos sin redondear. Con precio de compra: cantidad × precio × cambio de la compra (o el actual). Null si no hay coste. */
+export function costOf(h: Holding, fxNow: number | null = 1): number | null {
+  if (typeof h.unitCost === 'number' && Number.isFinite(h.unitCost)) return h.quantity * h.unitCost * 100 * (h.costFx ?? fxNow ?? 1);
   return h.costBasisCents;
 }
 
@@ -36,11 +49,16 @@ export function holdingRows(s: State, accountIds: Id[] | null, days: number, tod
     if (!sec) continue;
     const f = priceLookup(s.prices[h.securityId]);
     const valueCents = Math.round(h.quantity * f(today) * 100);
-    const exactCost = costOf(h);
+    const foreign = isForeign(s, sec), fx = currentFx(s, sec);
+    const exactCost = costOf(h, fx);
     // Como en los brokers: coste y valor se redondean a céntimos y la ganancia y el % salen de esas cifras, para que lo que se ve cuadre.
     const costCents = exactCost === null ? null : Math.round(exactCost);
     const p0 = f(from), p1 = f(today);
-    rows.push({ holding: h, name: sec.name, ticker: sec.ticker, assetClass: sec.assetClass, valueCents, periodPct: p0 ? (p1 / p0 - 1) * 100 : 0, gainCents: costCents === null ? null : valueCents - costCents, gainPct: costCents ? ((valueCents - costCents) / costCents) * 100 : null, unitPrice: f(today), unitCost: typeof h.unitCost === 'number' ? h.unitCost : exactCost === null || !(h.quantity > 0) ? null : exactCost / 100 / h.quantity });
+    // Los precios unitarios se enseñan en la moneda del valor cuando se conoce el cambio.
+    const native = foreign && fx !== null;
+    const div = native ? fx! : 1;
+    const unitCost = typeof h.unitCost === 'number' ? h.unitCost : exactCost === null || !(h.quantity > 0) ? null : exactCost / 100 / h.quantity / (native ? h.costFx ?? div : 1);
+    rows.push({ holding: h, name: sec.name, ticker: sec.ticker, assetClass: sec.assetClass, valueCents, periodPct: p0 ? (p1 / p0 - 1) * 100 : 0, gainCents: costCents === null ? null : valueCents - costCents, gainPct: costCents ? ((valueCents - costCents) / costCents) * 100 : null, unitPrice: f(today) / div, unitCost, currency: native ? sec.currency!.toUpperCase() : (s.settings.currency || 'EUR'), fxMissing: foreign && fx === null });
   }
   return rows.sort((a, b) => b.valueCents - a.valueCents);
 }

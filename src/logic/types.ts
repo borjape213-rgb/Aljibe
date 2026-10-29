@@ -99,6 +99,9 @@ export interface Security {
   currency?: string;
   /** Última vez que se actualizó el precio desde internet (ISO). */
   updatedAt?: string;
+  /** Cambio actual: unidades de la moneda base por 1 unidad de la moneda del valor (solo si cotiza en otra moneda). */
+  fxRate?: number;
+  fxDate?: string;
 }
 export interface PricePoint {
   date: string;
@@ -113,6 +116,8 @@ export interface Holding {
   costBasisCents: number | null;
   /** Precio de compra por unidad tal como se escribió, sin redondear a céntimos. Con él, el coste exacto es cantidad × unitCost. */
   unitCost?: number | null;
+  /** Cambio al comprar (moneda base por 1 unidad de la moneda del valor). Vacío: se usa el cambio actual. */
+  costFx?: number | null;
 }
 export interface Benchmark {
   id: Id;

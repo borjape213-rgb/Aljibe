@@ -126,12 +126,18 @@ export async function fetchQuotes(o: FetchOptions): Promise<QuoteResult[]> {
   return out;
 }
 
-export interface PreviewRow { id: string; date: string; oldPrice: number | null; newPrice: number; changePct: number | null; suspicious: boolean; stale: boolean }
+export interface PreviewRow { id: string; rate: number; date: string; oldPrice: number | null; newPrice: number; changePct: number | null; suspicious: boolean; stale: boolean }
 /** Compara lo obtenido con el último precio guardado. Un salto de más del 30 % o una fecha más antigua se marcan para no aplicarlos sin querer. */
 export function previewQuotes(prices: Record<string, { date: string; price: number }[]>, results: QuoteResult[]): PreviewRow[] {
   return results.filter((r) => r.ok && r.price !== undefined && r.date).map((r) => {
     const last = (prices[r.id] ?? []).at(-1) ?? null;
     const changePct = last && last.price > 0 ? (r.price! / last.price - 1) * 100 : null;
-    return { id: r.id, date: r.date!, oldPrice: last?.price ?? null, newPrice: r.price!, changePct, suspicious: changePct !== null && Math.abs(changePct) > 30, stale: !!last && r.date! < last.date };
+    return { id: r.id, rate: r.rate ?? 1, date: r.date!, oldPrice: last?.price ?? null, newPrice: r.price!, changePct, suspicious: changePct !== null && Math.abs(changePct) > 30, stale: !!last && r.date! < last.date };
   });
+}
+
+/** Cambio de hoy del BCE (Frankfurter): unidades de `base` por 1 unidad de `cur`. */
+export async function fetchRate(cur: string, base: string, fetchFn: typeof fetch = fetch, signal?: AbortSignal): Promise<Parsed<number>> {
+  try { return parseFx(await getJson(fetchFn, `${FX}/${cur.toUpperCase()}/${base.toUpperCase()}`, signal), base.toUpperCase()); }
+  catch (e) { return { ok: false, error: 'network', detail: e instanceof Error ? e.message : String(e) }; }
 }

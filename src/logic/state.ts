@@ -98,7 +98,7 @@ export function normalizeState(raw: unknown): Normalized {
     const rules = list(p, 'rules', false, 'reglas'); each(rules, 'Regla', (r) => str(r.id) && str(r.merchantContains));
     const recurring = list(p, 'recurring', false, 'recurrentes'); each(recurring, 'Recurrente', (r) => str(r.id) && str(r.name) && int(r.amountCents) && int(r.dayOfMonth) && str(r.categoryId) && str(r.accountId) && ['weekly', 'monthly', 'yearly'].includes(r.frequency as string) && ['active', 'cancelled', 'pending-approval'].includes(r.status as string));
     const securities = list(p, 'securities', false, 'valores'); each(securities, 'Valor', (r) => str(r.id) && str(r.ticker) && str(r.name) && str(r.assetClass));
-    const holdings = list(p, 'holdings', false, 'posiciones'); each(holdings, 'Posición', (r) => str(r.id) && str(r.accountId) && str(r.securityId) && num(r.quantity) && (r.costBasisCents === null || int(r.costBasisCents)) && (r.unitCost === undefined || r.unitCost === null || (typeof r.unitCost === 'number' && Number.isFinite(r.unitCost) && r.unitCost >= 0)));
+    const holdings = list(p, 'holdings', false, 'posiciones'); each(holdings, 'Posición', (r) => str(r.id) && str(r.accountId) && str(r.securityId) && num(r.quantity) && (r.costBasisCents === null || int(r.costBasisCents)) && (r.unitCost === undefined || r.unitCost === null || (typeof r.unitCost === 'number' && Number.isFinite(r.unitCost) && r.unitCost >= 0)) && (r.costFx === undefined || r.costFx === null || (typeof r.costFx === 'number' && Number.isFinite(r.costFx) && r.costFx > 0)));
     const benchmarks = list(p, 'benchmarks', false, 'índices'); each(benchmarks, 'Índice', (r) => str(r.id) && str(r.name) && Array.isArray(r.series) && (r.series as unknown[]).every((x) => isObj(x) && str(x.date) && num(x.price)));
     const prices = p.prices === undefined || p.prices === null ? {} : p.prices;
     need(isObj(prices) && Object.values(prices).every((s) => Array.isArray(s) && s.every((x) => isObj(x) && str(x.date) && num(x.price))), 'Los precios no son válidos.');
@@ -114,7 +114,7 @@ export function normalizeState(raw: unknown): Normalized {
       state: {
         version: 1, settings, accounts, groups: grps, categories: cats, tags: tags as State['tags'], transactions,
         budgetItems: budgetItems as State['budgetItems'], rollovers: rollovers as State['rollovers'], rules: rules as State['rules'],
-        recurring: recurring as State['recurring'], securities: (securities as Record<string, unknown>[]).map((r) => ({ ...r, symbol: str(r.symbol) ? r.symbol : undefined, currency: str(r.currency) ? r.currency : undefined, updatedAt: str(r.updatedAt) ? r.updatedAt : undefined })) as State['securities'], prices: prices as State['prices'],
+        recurring: recurring as State['recurring'], securities: (securities as Record<string, unknown>[]).map((r) => ({ ...r, symbol: str(r.symbol) ? r.symbol : undefined, currency: str(r.currency) ? r.currency : undefined, updatedAt: str(r.updatedAt) ? r.updatedAt : undefined, fxRate: typeof r.fxRate === 'number' && Number.isFinite(r.fxRate) && r.fxRate > 0 ? r.fxRate : undefined, fxDate: str(r.fxDate) ? r.fxDate : undefined })) as State['securities'], prices: prices as State['prices'],
         holdings: holdings as State['holdings'], benchmarks: benchmarks as State['benchmarks'],
         seededAt: str(p.seededAt) ? (p.seededAt as string) : null,
       },
