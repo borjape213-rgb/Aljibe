@@ -40,6 +40,16 @@ export function costOf(h: Holding, fxNow: number | null = 1): number | null {
   return h.costBasisCents;
 }
 
+/**
+ * Porcentaje de ganancia de una posición como lo enseña el broker: con dos decimales cortados, no redondeados
+ * (+72,285 → +72,28). El 1e-6 absorbe el ruido de coma flotante cuando el valor cae justo en un centésimo.
+ * Solo para este porcentaje; los importes en euros siguen redondeándose a céntimos.
+ */
+export function gainPctText(pct: number): string {
+  const t = Math.trunc(Math.abs(pct) * 100 + 1e-6) / 100;
+  return `${pct >= 0 ? '+' : '−'}${t.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
+}
+
 export function holdingRows(s: State, accountIds: Id[] | null, days: number, today = todayISO()): HoldingRow[] {
   const from = addDays(today, -days);
   const rows: HoldingRow[] = [];

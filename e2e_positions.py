@@ -68,7 +68,7 @@ with sync_playwright() as p:
     row = pg.locator('section[aria-label="Posiciones"] a.row').first.inner_text().replace('\u00a0', ' ')
     check('muestra el precio de compra exacto, tal como se escribió', '117,828 €' in row and '203,00 €' in row and '63 uds' in row)
     check('valor 12.789,00 y ganancia 5.365,84', '12.789,00' in row and '+5.365,84' in row)
-    check('el % de ganancia sale (72,2x %)', re.search(r'72,2[89] %', row) is not None)
+    check('el % de ganancia sale (72,28 %, cortado como el broker)', re.search(r'72,28 %', row) is not None)
     # el valor no cambia con el precio de compra; la ganancia sí
     pg.locator('section[aria-label="Posiciones"] a.row').first.click(); pg.wait_for_selector('text=Tus posiciones')
     pg.get_by_role('button', name='Editar', exact=True).click()

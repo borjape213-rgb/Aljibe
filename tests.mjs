@@ -3,7 +3,7 @@ import { buildSeed } from './src/logic/seed.ts';
 import { accountSeries, accountValueCents, netWorthSeries, actualsByCategory, cashFlow, effectiveParts } from './src/logic/ledger.ts';
 import { budgetSummary, rolloverIn, defaultBudgets, budgetOf } from './src/logic/budget.ts';
 import { occurrencesInMonth, detectRecurring } from './src/logic/recurring.ts';
-import { holdingRows, portfolioReturn, allocation } from './src/logic/invest.ts';
+import { holdingRows, portfolioReturn, allocation, gainPctText } from './src/logic/invest.ts';
 import { parseCSV, guessMapping, rowsFromCSV, planImport, applyRules } from './src/logic/importer.ts';
 import { addDays, monthStart, addMonths, todayISO } from './src/logic/dates.ts';
 
@@ -400,7 +400,11 @@ console.log('posiciones: precios unitarios ok');
   const st = mkState([{ q: 117, price: 305.35, unit: 133.436752 }, { q: 63, price: 203, unit: 117.828 }]);
   const [nq, sp] = ['h0', 'h1'].map((id) => holdingRows(st, null, 30).find((r) => r.holding.id === id));
   assert.equal(nq.valueCents, 3572595); assert.equal(nq.gainCents, 2011385); assert.ok(Math.abs(nq.gainPct - 128.83) <= 0.0101, 'el % cae justo en el límite de redondeo (128,835): el broker muestra 128,83'); assert.equal(nq.gainPct.toFixed(3), '128.835');
-  assert.equal(sp.valueCents, 1278900); assert.equal(sp.gainCents, 536584); assert.ok(Math.abs(sp.gainPct - 72.28) <= 0.0101, 'el broker trunca (72,285 → 72,28); aquí se redondea'); assert.equal(sp.gainPct.toFixed(3), '72.285');
+  assert.equal(sp.valueCents, 1278900); assert.equal(sp.gainCents, 536584); assert.ok(Math.abs(sp.gainPct - 72.28) <= 0.0101, 'el broker trunca (72,285 → 72,28); gainPct es el valor exacto y gainPctText lo corta'); assert.equal(sp.gainPct.toFixed(3), '72.285');
+  assert.equal(gainPctText(nq.gainPct), '+128,83 %', 'como el broker: 128,835 se corta a 128,83');
+  assert.equal(gainPctText(sp.gainPct), '+72,28 %', 'como el broker: 72,285 se corta a 72,28');
+  assert.equal(gainPctText(12.847), '+12,84 %'); assert.equal(gainPctText(-12.847), '−12,84 %', 'en negativo también se corta hacia cero');
+  assert.equal(gainPctText(12.84), '+12,84 %'); assert.equal(gainPctText(12.839999999999), '+12,84 %', 'el ruido de coma flotante no baja un centésimo'); assert.equal(gainPctText(0), '+0,00 %'); assert.equal(gainPctText(12345.678), '+12.345,67 %');
   assert.equal(sp.unitCost, 117.828, 'el precio de compra se conserva exacto'); assert.equal(sp.unitPrice, 203);
   // el valor no depende del precio de compra; la ganancia y el % sí
   const base = mkState([{ q: 63, price: 203, unit: 100 }]), alt = mkState([{ q: 63, price: 203, unit: 150 }]);

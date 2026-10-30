@@ -3,7 +3,7 @@ import { LuPlus, LuTrash2 } from 'react-icons/lu';
 import type { Route } from '../router.tsx';
 import { setQuery } from '../router.tsx';
 import { useData } from '../store.ts';
-import { RANGES, allocation, costOf, currentFx, holdingRows, isForeign, type HoldingRow, pctSeries, portfolioPctSeries, portfolioReturn, CLASS_LABEL } from '../logic/invest.ts';
+import { RANGES, allocation, gainPctText, costOf, currentFx, holdingRows, isForeign, type HoldingRow, pctSeries, portfolioPctSeries, portfolioReturn, CLASS_LABEL } from '../logic/invest.ts';
 import { addDays, todayISO } from '../logic/dates.ts';
 import { priceLookup } from '../logic/ledger.ts';
 import type { AssetClass, Holding } from '../logic/types.ts';
@@ -20,7 +20,7 @@ const qtyText = (q: number) => q.toLocaleString('es-ES', { maximumFractionDigits
 export function PositionInfo({ r, sub }: { r: HoldingRow; sub: string }) {
   const cur = r.currency;
   const g = r.gainCents, up = g !== null && g >= 0;
-  const pct = r.gainPct === null ? '' : `${r.gainPct >= 0 ? '+' : '−'}${Math.abs(r.gainPct).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
+  const pct = r.gainPct === null ? '' : gainPctText(r.gainPct);
   return (
     <>
       <span className="grow"><span className="title" style={{ display: 'block' }}>{r.name}</span>
