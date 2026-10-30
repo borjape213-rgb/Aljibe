@@ -1,3 +1,4 @@
+const _x: number = "no es un número";
 import { useMemo, useState } from 'react';
 import { LuChevronLeft, LuChevronRight, LuChevronDown, LuRepeat } from 'react-icons/lu';
 import type { Route } from '../router.tsx';
