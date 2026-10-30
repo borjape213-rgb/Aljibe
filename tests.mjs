@@ -553,7 +553,7 @@ console.log('reglas a todo y traspasos recurrentes ok');
     for (const n of sk.nodes) {
       const out = sk.links.filter((l) => l.source === n.id).reduce((a, l) => a + l.cents, 0), inn = sk.links.filter((l) => l.target === n.id).reduce((a, l) => a + l.cents, 0);
       if (n.col > 0) assert.equal(inn, n.cents, 'entra lo que dice el nodo ' + n.id);
-      if (n.col < 3 && n.kind !== 'saving') assert.equal(out, n.cents, 'sale lo que dice el nodo ' + n.id);
+      if (n.col < 3 && n.kind !== 'saving' && n.kind !== 'other' && !(n.kind === 'group' && out === 0)) assert.equal(out, n.cents, 'sale lo que dice el nodo ' + n.id);
       assert.ok(n.h > 0 && n.y >= 0);
     }
     for (const c of [0, 1, 2, 3]) { const col = sk.nodes.filter((n) => n.col === c).sort((a, b) => a.y - b.y); for (let i = 1; i < col.length; i++) assert.ok(col[i].y >= col[i - 1].y + col[i - 1].h - 0.001, 'sin solapes en la columna ' + c); }
@@ -573,6 +573,19 @@ console.log('reglas a todo y traspasos recurrentes ok');
   // partidas pequeñas se agrupan en «Otros»
   const tiny = buildSankey({ ...base, transactions: [mk('1', '2026-03-02', 1000000, 'c-salary'), mk('2', '2026-03-03', -500000, 'c-rent'), mk('3', '2026-03-04', -1000, 'c-groceries'), mk('4', '2026-03-04', -1000, 'c-transit'), mk('5', '2026-03-04', -1000, 'c-fun')] }, month, to);
   check(tiny);
+  const other = tiny.nodes.find((n) => n.kind === 'other');
+  assert.ok(other && other.label === 'Otros' && other.cents === 3000, 'los grupos bajo el 5 % del gasto se juntan en «Otros»');
+  assert.ok(!tiny.nodes.some((n) => n.kind === 'group' && n.cents < 50000), 'ningún grupo suelto por debajo del 5 %');
+  // categorías pequeñas dentro de un grupo grande → «Otros (grupo)»
+  const cats3 = [{ id: 'k1', groupId: 'g-food', name: 'K1' }, { id: 'k2', groupId: 'g-food', name: 'K2' }, { id: 'k3', groupId: 'g-food', name: 'K3' }];
+  const same = cats3.map((c) => c.id);
+  const inner = buildSankey({ ...base, categories: [...base.categories, ...cats3], transactions: [mk('1', '2026-03-02', 1000000, 'c-salary'), mk('2', '2026-03-03', -100000, same[0]), mk('3', '2026-03-04', -1000, same[1]), mk('4', '2026-03-04', -1000, same[2])] }, month, to);
+  check(inner); assert.ok(inner.nodes.some((n) => n.kind === 'category' && n.label === 'Otros' && n.cents === 2000), 'categorías pequeñas agrupadas en «Otros»');
+  assert.ok(!inner.nodes.some((n) => n.kind === 'category' && n.cents < 50000 && n.label !== 'Otros'), 'ninguna categoría suelta bajo el 5 %');
+  // categorías pequeñas de grupos distintos acaban en un único «Otros»
+  const multi = buildSankey({ ...base, categories: [...base.categories, ...cats3], transactions: [mk('1', '2026-03-02', 1000000, 'c-salary'), mk('2', '2026-03-03', -300000, 'c-rent'), mk('3', '2026-03-03', -200000, 'k1'), mk('4', '2026-03-04', -1000, 'k2'), mk('5', '2026-03-04', -2000, 'c-utilities'), mk('6', '2026-03-04', -3000, 'c-internet')] }, month, to);
+  check(multi); const oth = multi.nodes.filter((n) => n.id === 'c:other'); assert.equal(oth.length, 1); assert.equal(oth[0].cents, 6000);
+  assert.ok(multi.links.filter((l) => l.target === 'c:other').length >= 2, 'recibe flujos de varios grupos');
   // mes vacío
   assert.equal(buildSankey(base, '2001-01-01', '2001-01-31').nodes.length, 0);
   // con los datos de demostración, cualquier mes cuadra

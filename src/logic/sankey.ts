@@ -6,18 +6,18 @@ import { catIndex, effectiveParts } from './ledger.ts';
  * Mismo criterio que `cashFlow`: sin traspasos ni ocultas, y cada parte cuenta como ingreso si es positiva y como gasto si es negativa.
  * Si se gasta más de lo que entra, aparece un origen «Déficit» para que los flujos cuadren.
  */
-export type SankeyKind = 'income' | 'deficit' | 'total' | 'saving' | 'group' | 'category';
+export type SankeyKind = 'income' | 'deficit' | 'total' | 'saving' | 'group' | 'category' | 'other';
 export interface SNode { id: string; label: string; col: 0 | 1 | 2 | 3; kind: SankeyKind; cents: number; color: string; x: number; y: number; h: number }
 export interface SLink { source: string; target: string; cents: number; color: string; w: number; sy: number; ty: number }
 export interface Sankey { nodes: SNode[]; links: SLink[]; total: number; totalIn: number; totalOut: number; net: number; width: number; height: number; nodeW: number }
 
-export interface SankeyOptions { width?: number; height?: number; gap?: number; minH?: number; minShare?: number }
+export interface SankeyOptions { width?: number; height?: number; gap?: number; minH?: number; minShare?: number; expenseShare?: number }
 
 const GREEN = 'var(--color-success)', RED = 'var(--color-danger)';
 const chart = (i: number) => `var(--color-chart-${(i % 8) + 1})`;
 
 export function buildSankey(s: State, from: string, to: string, opt: SankeyOptions = {}): Sankey {
-  const width = opt.width ?? 480, H = opt.height ?? 420, gap = opt.gap ?? 8, minH = opt.minH ?? 3, minShare = opt.minShare ?? 0.015, nodeW = 10;
+  const width = opt.width ?? 480, H = opt.height ?? 420, gap = opt.gap ?? 8, minH = opt.minH ?? 3, minShare = opt.minShare ?? 0.015, expShare = opt.expenseShare ?? 0.05, nodeW = 10;
   const { cats, groups, kindOf } = catIndex(s);
   const inc = new Map<Id, number>(), exp = new Map<Id, number>();
   for (const t of s.transactions) {
@@ -38,11 +38,11 @@ export function buildSankey(s: State, from: string, to: string, opt: SankeyOptio
   const node = (id: string, label: string, col: SNode['col'], kind: SankeyKind, cents: number, color: string) => nodes.push({ id, label, col, kind, cents, color, x: 0, y: 0, h: 0 });
   const link = (source: string, target: string, cents: number, color: string) => links.push({ source, target, cents, color, w: 0, sy: 0, ty: 0 });
   /** Agrupa las partidas pequeñas en una sola «Otros» (solo si son al menos dos). */
-  const merged = (rows: { id: string; label: string; cents: number }[], otherLabel: string) => {
+  const merged = (rows: { id: string; label: string; cents: number }[], otherLabel: string, limit = small) => {
     const sorted = [...rows].sort((a, b) => b.cents - a.cents || a.label.localeCompare(b.label));
-    const tiny = sorted.filter((r) => r.cents < small);
+    const tiny = sorted.filter((r) => r.cents < limit);
     if (tiny.length < 2) return sorted;
-    return [...sorted.filter((r) => r.cents >= small), { id: 'other', label: otherLabel, cents: tiny.reduce((n, r) => n + r.cents, 0) }];
+    return [...sorted.filter((r) => r.cents >= limit), { id: 'other', label: otherLabel, cents: tiny.reduce((n, r) => n + r.cents, 0) }];
   };
 
   // columna 0 → 1: de dónde entra el dinero
@@ -60,11 +60,29 @@ export function buildSankey(s: State, from: string, to: string, opt: SankeyOptio
     byGroup.set(gid, [...(byGroup.get(gid) ?? []), { id, label: name(id), cents }]);
   }
   const groupRows = [...byGroup].map(([gid, rows]) => ({ gid, label: groups.get(gid)?.name ?? 'Sin grupo', rows, cents: rows.reduce((n, r) => n + r.cents, 0) })).sort((a, b) => b.cents - a.cents || a.label.localeCompare(b.label));
-  groupRows.forEach((g, i) => {
+  // gastos: lo que no llega al 5 % (el porcentaje que se ve en el diagrama) se junta en «Otros»:
+  // los grupos pequeños en un solo grupo «Otros» y las categorías pequeñas, de cualquier grupo, en una sola categoría «Otros»
+  const limitOut = total * expShare;
+  const smallGroups = groupRows.filter((g) => g.cents < limitOut);
+  const shown = smallGroups.length >= 2 ? groupRows.filter((g) => g.cents >= limitOut) : groupRows;
+  const tinyCats: { gid: string; cents: number }[] = [], keep: { g: (typeof groupRows)[number]; r: { id: string; label: string; cents: number }; color: string }[] = [];
+  shown.forEach((g, i) => {
     const color = chart(i);
     node(`g:${g.gid}`, g.label, 2, 'group', g.cents, color); link('total', `g:${g.gid}`, g.cents, color);
-    for (const r of merged(g.rows, `Otros (${g.label})`)) { node(`c:${g.gid}:${r.id}`, r.label, 3, 'category', r.cents, color); link(`g:${g.gid}`, `c:${g.gid}:${r.id}`, r.cents, color); }
+    for (const r of [...g.rows].sort((a, b) => b.cents - a.cents || a.label.localeCompare(b.label))) (r.cents < limitOut ? tinyCats.push({ gid: g.gid, cents: r.cents }) : keep.push({ g, r, color }));
   });
+  // una sola categoría pequeña se queda con su nombre; con dos o más se juntan
+  const lone = tinyCats.length === 1 ? shown.flatMap((g) => g.rows.map((r) => ({ g, r }))).find((x) => x.g.gid === tinyCats[0].gid && x.r.cents === tinyCats[0].cents) : undefined;
+  if (lone) keep.push({ g: lone.g, r: lone.r, color: chart(shown.indexOf(lone.g)) });
+  for (const k of keep) { node(`c:${k.g.gid}:${k.r.id}`, k.r.label, 3, 'category', k.r.cents, k.color); link(`g:${k.g.gid}`, `c:${k.g.gid}:${k.r.id}`, k.r.cents, k.color); }
+  if (tinyCats.length >= 2) {
+    node('c:other', 'Otros', 3, 'category', tinyCats.reduce((n, t) => n + t.cents, 0), 'var(--color-text-muted)');
+    for (const gid of new Set(tinyCats.map((t) => t.gid))) link(`g:${gid}`, 'c:other', tinyCats.filter((t) => t.gid === gid).reduce((n, t) => n + t.cents, 0), 'var(--color-text-muted)');
+  }
+  if (shown !== groupRows) {
+    const cents = smallGroups.reduce((n, g) => n + g.cents, 0), color = 'var(--color-text-muted)';
+    node('g:other', 'Otros', 2, 'other', cents, color); link('total', 'g:other', cents, color);
+  }
 
   // tamaño: una misma escala para todas las columnas, la que quepa en la altura dada
   const cols = [0, 1, 2, 3].map((c) => nodes.filter((n) => n.col === c));

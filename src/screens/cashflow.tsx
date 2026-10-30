@@ -46,7 +46,7 @@ export function CashFlow({ route }: { route: Route }) {
               {sk.nodes.length === 0 ? <p className="muted sm" style={{ margin: '8px 0 0' }}>Este mes no hay ingresos ni gastos.</p> : (
                 <>
                   <SankeyChart sk={sk} />
-                  <p className="xs muted" style={{ margin: '4px 0 0' }}>Los porcentajes son sobre {sk.totalOut > sk.totalIn ? 'el total gastado' : 'tus ingresos'}. No incluye traspasos entre tus cuentas.{sk.net < 0 ? ' Como gastaste más de lo que entró, aparece un origen «Déficit».' : ''} Desplaza en horizontal si no cabe.</p>
+                  <p className="xs muted" style={{ margin: '4px 0 0' }}>Los porcentajes son sobre {sk.totalOut > sk.totalIn ? 'el total gastado' : 'tus ingresos'}. Lo que no llega al 5 % se junta en «Otros». No incluye traspasos entre tus cuentas.{sk.net < 0 ? ' Como gastaste más de lo que entró, aparece un origen «Déficit».' : ''} Desplaza en horizontal si no cabe.</p>
                 </>
               )}
             </section>

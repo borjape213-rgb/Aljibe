@@ -106,14 +106,14 @@ export function SankeyChart({ sk }: { sk: Sankey }) {
         })}</g>
         {sk.nodes.map((n) => {
           // columna 0: etiqueta a la derecha y arriba; resto: a la izquierda de su barra, para que no se pisen entre columnas
-          const left = n.col >= 1, tx = left ? n.x - 8 : n.x + sk.nodeW + 8, two = n.h >= 30, show = n.h >= 14;
+          const left = n.col >= 1, tx = left ? n.x - 8 : n.x + sk.nodeW + 8, two = n.h >= 30, show = true;
           const cy = n.col === 0 && two ? n.y + 16 : n.y + n.h / 2;
           return (
             <g key={n.id}>
               <rect x={n.x} y={n.y} width={sk.nodeW} height={n.h} rx="2" fill={n.color}><title>{`${n.label}: ${money(n.cents)} (${pct(n.cents)})`}</title></rect>
               {show ? (
-                <text x={tx} y={two ? cy - 2 : cy + 4} textAnchor={left ? 'end' : 'start'} fontSize="12" fill="var(--color-text)" style={halo}>
-                  {two ? <><tspan x={tx} fontWeight={600}>{n.label}</tspan><tspan x={tx} dy="15">{money(n.cents)} ({pct(n.cents)})</tspan></> : `${n.label} · ${money(n.cents)}`}
+                <text x={tx} y={two ? cy - 2 : cy + 4} textAnchor={left ? 'end' : 'start'} fontSize={n.h < 14 ? 11 : 12} fill="var(--color-text)" style={halo}>
+                  {two ? <><tspan x={tx} fontWeight={600}>{n.label}</tspan><tspan x={tx} dy="15">{money(n.cents)} ({pct(n.cents)})</tspan></> : `${n.label} · ${money(n.cents)} (${pct(n.cents)})`}
                 </text>
               ) : null}
             </g>
