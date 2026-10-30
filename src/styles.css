@@ -130,3 +130,4 @@ svg text{font-family:inherit}
 .mr-ctrl{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .mr-ctrl .btn{flex:0 0 auto}
 a.btn{text-decoration:none}
+.sankey{overflow-x:auto;padding:12px 4px 4px;-webkit-overflow-scrolling:touch}

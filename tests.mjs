@@ -542,3 +542,41 @@ console.log('filtros de movimientos ok');
   assert.equal(detectRecurring(card).length, 0, 'importes variables no son traspaso recurrente');
 }
 console.log('reglas a todo y traspasos recurrentes ok');
+
+{
+  const { buildSankey } = await import('./src/logic/sankey.ts');
+  const { cashFlow } = await import('./src/logic/ledger.ts');
+  const base = JSON.parse(JSON.stringify(buildSeed()));
+  const mk = (id, date, amt, cat, extra = {}) => ({ id, date, amountCents: amt, merchant: 'X' + id, notes: '', accountId: base.accounts[0].id, categoryId: cat, splits: [], ...extra });
+  const check = (sk) => {
+    const by = new Map(sk.nodes.map((n) => [n.id, n]));
+    for (const n of sk.nodes) {
+      const out = sk.links.filter((l) => l.source === n.id).reduce((a, l) => a + l.cents, 0), inn = sk.links.filter((l) => l.target === n.id).reduce((a, l) => a + l.cents, 0);
+      if (n.col > 0) assert.equal(inn, n.cents, 'entra lo que dice el nodo ' + n.id);
+      if (n.col < 3 && n.kind !== 'saving') assert.equal(out, n.cents, 'sale lo que dice el nodo ' + n.id);
+      assert.ok(n.h > 0 && n.y >= 0);
+    }
+    for (const c of [0, 1, 2, 3]) { const col = sk.nodes.filter((n) => n.col === c).sort((a, b) => a.y - b.y); for (let i = 1; i < col.length; i++) assert.ok(col[i].y >= col[i - 1].y + col[i - 1].h - 0.001, 'sin solapes en la columna ' + c); }
+    for (const l of sk.links) assert.ok(by.has(l.source) && by.has(l.target));
+  };
+  // un mes con datos: coincide con el resumen de flujo de caja
+  const month = '2026-03-01', to = '2026-03-31';
+  const st = { ...base, transactions: [mk('1', '2026-03-02', 420000, 'c-salary'), mk('2', '2026-03-03', -138500, 'c-rent'), mk('3', '2026-03-04', -20000, 'c-groceries'), mk('4', '2026-03-05', -3000, 'c-groceries'), mk('5', '2026-03-06', -15000, 'c-transit'), mk('6', '2026-03-07', -50000, 'c-transfer'), mk('7', '2026-03-08', -999, 'c-fun', { hidden: true }), mk('8', '2026-04-01', -5000, 'c-fun')] };
+  const sk = buildSankey(st, month, to), cf = cashFlow(st, month, to, 'category');
+  assert.equal(sk.totalIn, cf.totalIn); assert.equal(sk.totalOut, -cf.totalOut); assert.equal(sk.net, cf.net, 'mismos totales que el resumen');
+  assert.equal(sk.total, 420000); check(sk);
+  assert.ok(sk.nodes.some((n) => n.kind === 'saving' && n.cents === 420000 - 138500 - 23000 - 15000), 'ahorro = ingresos − gastos (sin traspasos ni ocultas)');
+  assert.ok(!sk.nodes.some((n) => n.label.includes('Traspaso')), 'los traspasos no salen');
+  // déficit
+  const def = buildSankey({ ...base, transactions: [mk('1', '2026-03-02', 100000, 'c-salary'), mk('2', '2026-03-03', -150000, 'c-rent')] }, month, to);
+  check(def); assert.equal(def.nodes.find((n) => n.kind === 'deficit').cents, 50000); assert.ok(!def.nodes.some((n) => n.kind === 'saving'));
+  // partidas pequeñas se agrupan en «Otros»
+  const tiny = buildSankey({ ...base, transactions: [mk('1', '2026-03-02', 1000000, 'c-salary'), mk('2', '2026-03-03', -500000, 'c-rent'), mk('3', '2026-03-04', -1000, 'c-groceries'), mk('4', '2026-03-04', -1000, 'c-transit'), mk('5', '2026-03-04', -1000, 'c-fun')] }, month, to);
+  check(tiny);
+  // mes vacío
+  assert.equal(buildSankey(base, '2001-01-01', '2001-01-31').nodes.length, 0);
+  // con los datos de demostración, cualquier mes cuadra
+  const demo = JSON.parse(JSON.stringify(buildSeed())); demo.transactions = buildSeed().transactions;
+  for (const m of ['2026-08-01', '2026-09-01', '2026-10-01']) check(buildSankey(demo, m, m.slice(0, 8) + '31'));
+}
+console.log('diagrama de flujo ok');

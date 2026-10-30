@@ -2,6 +2,7 @@ import React, { useId, useState } from 'react';
 import { area as d3area, line as d3line, curveMonotoneX } from 'd3-shape';
 import { money, moneyRound } from './ui.tsx';
 import { formatShort } from './logic/dates.ts';
+import type { Sankey } from './logic/sankey.ts';
 
 export interface Pt { date: string; value: number }
 
@@ -89,3 +90,36 @@ export function StackedBar({ parts, total }: { parts: { label: string; cents: nu
 }
 export const CHART_COLORS = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `var(--color-chart-${n})`);
 export { moneyRound };
+
+/** Diagrama de flujo (Sankey). Ancho fijo con desplazamiento horizontal en pantallas estrechas; las etiquetas llevan un halo para leerse sobre los flujos. */
+export function SankeyChart({ sk }: { sk: Sankey }) {
+  const pct = (c: number) => `${((c / sk.total) * 100).toFixed(1).replace('.', ',')} %`;
+  const byId = new Map(sk.nodes.map((n) => [n.id, n]));
+  const halo = { paintOrder: 'stroke', stroke: 'var(--color-surface)', strokeWidth: 3, strokeLinejoin: 'round' } as const;
+  return (
+    <div className="sankey" tabIndex={0} role="group" aria-label="Diagrama de flujo: desplázalo en horizontal si no cabe">
+      <svg viewBox={`0 0 ${sk.width} ${sk.height}`} width={sk.width} height={sk.height} role="img" aria-label={`Ingresos ${money(sk.totalIn)}, gastos ${money(sk.totalOut)}, ${sk.net >= 0 ? 'ahorro' : 'déficit'} ${money(Math.abs(sk.net))}`} style={{ display: 'block' }}>
+        <g>{sk.links.map((l) => {
+          const a = byId.get(l.source)!, b = byId.get(l.target)!;
+          const x0 = a.x + sk.nodeW, x1 = b.x, xm = (x0 + x1) / 2;
+          return <path key={l.source + l.target} d={`M${x0},${l.sy} C${xm},${l.sy} ${xm},${l.ty} ${x1},${l.ty} L${x1},${l.ty + l.w} C${xm},${l.ty + l.w} ${xm},${l.sy + l.w} ${x0},${l.sy + l.w} Z`} fill={l.color} opacity="0.28"><title>{`${a.label} → ${b.label}: ${money(l.cents)}`}</title></path>;
+        })}</g>
+        {sk.nodes.map((n) => {
+          // columna 0: etiqueta a la derecha y arriba; resto: a la izquierda de su barra, para que no se pisen entre columnas
+          const left = n.col >= 1, tx = left ? n.x - 8 : n.x + sk.nodeW + 8, two = n.h >= 30, show = n.h >= 14;
+          const cy = n.col === 0 && two ? n.y + 16 : n.y + n.h / 2;
+          return (
+            <g key={n.id}>
+              <rect x={n.x} y={n.y} width={sk.nodeW} height={n.h} rx="2" fill={n.color}><title>{`${n.label}: ${money(n.cents)} (${pct(n.cents)})`}</title></rect>
+              {show ? (
+                <text x={tx} y={two ? cy - 2 : cy + 4} textAnchor={left ? 'end' : 'start'} fontSize="12" fill="var(--color-text)" style={halo}>
+                  {two ? <><tspan x={tx} fontWeight={600}>{n.label}</tspan><tspan x={tx} dy="15">{money(n.cents)} ({pct(n.cents)})</tspan></> : `${n.label} · ${money(n.cents)}`}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
