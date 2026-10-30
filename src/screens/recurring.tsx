@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { LuChevronLeft, LuChevronRight, LuCheck, LuRepeat } from 'react-icons/lu';
 import { useData } from '../store.ts';
-import { occurrencesInMonth, detectRecurring } from '../logic/recurring.ts';
+import { occurrencesInMonth, detectRecurring, isTransferStream } from '../logic/recurring.ts';
 import { addMonths, daysInMonth, formatDay, formatMonth, iso, monthStart, parse, todayISO, weekdayMon0 } from '../logic/dates.ts';
 import { Amount, Banner, Button, EmptyState, IconButton, Segmented, toast } from '../ui.tsx';
 import { TopBar } from './shell.tsx';
@@ -23,7 +23,7 @@ export function Recurring() {
   const byDay = new Map<string, typeof occ>();
   occ.forEach((o) => byDay.set(o.date, [...(byDay.get(o.date) ?? []), o]));
   const list = (day ? occ.filter((o) => o.date === day) : occ).filter((o) => (view === 'done' ? o.state === 'paid' : o.state !== 'paid'));
-  const totalPlan = occ.reduce((n, o) => n + o.stream.amountCents, 0);
+  const totalPlan = occ.reduce((n, o) => n + (isTransferStream(s, o.stream) ? 0 : o.stream.amountCents), 0);
   return (
     <>
       <TopBar title="Recurrentes" />
@@ -33,7 +33,7 @@ export function Recurring() {
             <div className="cardhead"><h2>Detectados: revisa {pending.length}</h2>{pending.length > 1 ? <Button variant="ghost" style={{ minHeight: 44 }} onClick={async () => { const keep = pending.filter((r) => s.recurring.some((x) => x.id === r.id)); for (const r of keep) await setRecurringStatus(r.id, 'active'); await approveAllDetected(pending.filter((r) => !keep.includes(r))); toast(`${pending.length} añadidos`); }}>Aprobar todos</Button> : null}</div>
             {pending.map((r) => (
               <div key={r.id} className="row" style={{ flexWrap: 'wrap' }}>
-                <span className="grow" style={{ minWidth: 140 }}><span className="title">{r.name}</span><span className="xs muted">Cada mes, día {r.dayOfMonth}</span></span>
+                <span className="grow" style={{ minWidth: 140 }}><span className="title">{r.name}</span><span className="xs muted">Cada mes, día {r.dayOfMonth}{isTransferStream(s, r) ? ' · traspaso' : ''}</span></span>
                 <Amount cents={r.amountCents} signed />
                 <span style={{ display: 'flex', gap: 8, width: '100%' }}>
                   <Button variant="secondary" style={{ minHeight: 44, flex: 1 }} onClick={async () => { if (s.recurring.some((x) => x.id === r.id)) await setRecurringStatus(r.id, 'active'); else await approveDetected(r); toast(`${r.name} añadido`); }}>Aprobar</Button>
@@ -81,7 +81,7 @@ export function Recurring() {
             </div>
           ))}
         </section>
-        <Banner tone="info">Previsto del mes: <b className="num"><Amount cents={totalPlan} signed tone="none" /></b> neto entre ingresos y pagos recurrentes.</Banner>
+        <Banner tone="info">Previsto del mes: <b className="num"><Amount cents={totalPlan} signed tone="none" /></b> neto entre ingresos y pagos recurrentes (sin contar traspasos entre tus cuentas).</Banner>
       </main>
     </>
   );

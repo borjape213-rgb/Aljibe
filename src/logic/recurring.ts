@@ -49,7 +49,9 @@ export function detectRecurring(s: State): RecurringStream[] {
   const groups = new Map<string, Transaction[]>();
   for (const t of s.transactions) {
     const cat = s.categories.find((c) => c.id === t.categoryId);
-    if (t.hidden || cat?.groupId === 'g-transfer' || cat?.id === 'c-cash') continue;
+    if (t.hidden || cat?.id === 'c-cash') continue;
+    // un traspaso solo puede ser recurrente si sale de la cuenta: la entrada en la otra cuenta es el mismo movimiento
+    if (cat?.groupId === 'g-transfer' && t.amountCents >= 0) continue;
     const key = merchantKey(t.merchant);
     if (!key) continue;
     const k = `${key}|${t.accountId}|${Math.sign(t.amountCents)}`;
@@ -65,12 +67,24 @@ export function detectRecurring(s: State): RecurringStream[] {
     if (gaps.some((g) => g > 2) || gaps.filter((g) => g === 1).length < gaps.length * 0.6) continue;
     const amounts = ts.map((t) => Math.abs(t.amountCents)).sort((a, b) => a - b);
     const med = amounts[Math.floor(amounts.length / 2)];
-    if (amounts.some((a) => Math.abs(a - med) > med * 0.2)) continue;
     const days = ts.map((t) => parse(t.date).d);
-    if (Math.max(...days) - Math.min(...days) > 7) continue;
+    const isTransfer = ts.every((t) => s.categories.find((c) => c.id === t.categoryId)?.groupId === 'g-transfer');
+    if (isTransfer) {
+      // traspasos: mismo importe exacto y el día no se aleja más de 2 del habitual (fines de semana y festivos)
+      if (amounts.some((a) => a !== med)) continue;
+      const dsort = [...days].sort((a, b) => a - b), dm = dsort[Math.floor(dsort.length / 2)];
+      if (days.some((d) => Math.abs(d - dm) > 2)) continue;
+    } else {
+      if (amounts.some((a) => Math.abs(a - med) > med * 0.2)) continue;
+      if (Math.max(...days) - Math.min(...days) > 7) continue;
+    }
     const latest = ts.reduce((a, b) => (a.date > b.date ? a : b));
     out.push({ id: `det-${k}`, name: prettyName(key), amountCents: latest.amountCents, frequency: 'monthly', dayOfMonth: parse(latest.date).d, categoryId: latest.categoryId, accountId: latest.accountId, status: 'pending-approval' });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+/** ¿Es un traspaso entre cuentas propias? No cuenta como gasto ni ingreso previsto. */
+export function isTransferStream(s: State, r: RecurringStream): boolean {
+  return s.categories.find((c) => c.id === r.categoryId)?.groupId === 'g-transfer';
 }
 export { addDays };

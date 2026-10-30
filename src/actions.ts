@@ -2,7 +2,7 @@ import type { Account, Id, RecurringStream, Split, State, Transaction } from './
 import { hasNoMovements, isValuedByHand } from './logic/ledger.ts';
 import { getState, mutate, setState, freshSeed, emptyState, dropLegacyReview, savePreviousCopy, loadPreviousCopy } from './store.ts';
 import { countsOf, normalizeState } from './logic/state.ts';
-import { applyRules, planImport, type ImportRow } from './logic/importer.ts';
+import { applyRules, rulesChanges, planImport, type ImportRow } from './logic/importer.ts';
 import { monthStart } from './logic/dates.ts';
 import { sameMerchantUncategorized, suggestCategories } from './logic/merchants.ts';
 
@@ -150,6 +150,14 @@ export async function addRule(r: { id?: Id; merchantContains: string; amountCent
   if (!r.setCategoryId && !r.renameTo) throw new ValidationError('Elige una categoría o un nombre nuevo.');
   const rule = { id: r.id ?? uid('r'), merchantContains: text, amountCents: r.amountCents, amountDirection: hasAmount ? r.amountDirection : undefined, setCategoryId: r.setCategoryId, renameTo: r.renameTo };
   mutate((s) => ({ ...s, rules: r.id && s.rules.some((x) => x.id === r.id) ? s.rules.map((x) => (x.id === r.id ? rule : x)) : [...s.rules, rule] }));
+}
+/** Aplica todas las reglas a los movimientos ya guardados. Devuelve cuántos han cambiado. */
+export async function applyRulesToAll(): Promise<number> {
+  const changes = rulesChanges(getState().rules, getState().transactions);
+  if (!changes.length) return 0;
+  const by = new Map(changes.map((c) => [c.id, c]));
+  mutate((s) => ({ ...s, transactions: s.transactions.map((t) => { const c = by.get(t.id); return c ? { ...t, merchant: c.merchant, categoryId: c.categoryId } : t; }) }));
+  return changes.length;
 }
 export async function removeRule(id: Id) { mutate((s) => ({ ...s, rules: s.rules.filter((r) => r.id !== id) })); }
 export async function saveCategory(c: { id?: Id; groupId: Id; name: string }) {

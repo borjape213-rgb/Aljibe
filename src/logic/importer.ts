@@ -25,6 +25,18 @@ export function applyRules(rules: Rule[], t: Pick<Transaction, 'merchant' | 'cat
   return { merchant, categoryId };
 }
 
+/** Qué cambiaría aplicar las reglas a movimientos que ya existen (solo los que cambian). Una transacción dividida conserva sus partes. */
+export function rulesChanges(rules: Rule[], txs: Transaction[]): { id: Id; merchant: string; categoryId: Id }[] {
+  const out: { id: Id; merchant: string; categoryId: Id }[] = [];
+  if (!rules.length) return out;
+  for (const t of txs) {
+    const r = applyRules(rules, { merchant: t.merchant, categoryId: t.categoryId, amountCents: t.amountCents });
+    const categoryId = t.splits.length ? t.categoryId : r.categoryId;
+    if (r.merchant !== t.merchant || categoryId !== t.categoryId) out.push({ id: t.id, merchant: r.merchant, categoryId });
+  }
+  return out;
+}
+
 export function parseCSV(text: string): string[][] {
   const t = text.replace(/^﻿/, '');
   const first = t.split(/\r?\n/, 1)[0] ?? '';

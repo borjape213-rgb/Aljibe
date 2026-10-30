@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { hasNoMovements } from '../logic/ledger.ts';
 import { LuChevronRight, LuTrash2, LuPlus, LuDownload, LuUpload, LuArrowUp, LuArrowDown } from 'react-icons/lu';
 import { BAR_SLOTS, DESTS, WIDGET_NAMES, navOrder, widgetOrder } from '../nav.ts';
@@ -6,11 +6,11 @@ import { parseXLSX } from '../logic/xlsx.ts';
 import { isOLE, parseXLS } from '../logic/xls.ts';
 import type { Route } from '../router.tsx';
 import { discardPreviousCopy, loadPreviousCopy, useData, type PreviousCopy } from '../store.ts';
-import { findHeader, parseCSV, planImport, rowsFromCSV, statementInfo, type ImportRow, type StatementInfo } from '../logic/importer.ts';
+import { findHeader, parseCSV, planImport, rowsFromCSV, rulesChanges, statementInfo, type ImportRow, type StatementInfo } from '../logic/importer.ts';
 import { Banner, Button, EmptyState, Field, IconButton, Segmented, Sheet, money, toast } from '../ui.tsx';
 import { TopBar } from './shell.tsx';
 import { CategoryPicker } from './common.tsx';
-import { addRule, addTag, clearAll, markBackup, moveItem, deleteCategory, exportJSON, importRows, parseBackup, removeRule, removeTag, replaceAllData, resetSeed, restorePreviousCopy, saveCategory, updateSettings, ValidationError, type ParsedBackup } from '../actions.ts';
+import { addRule, applyRulesToAll, addTag, clearAll, markBackup, moveItem, deleteCategory, exportJSON, importRows, parseBackup, removeRule, removeTag, replaceAllData, resetSeed, restorePreviousCopy, saveCategory, updateSettings, ValidationError, type ParsedBackup } from '../actions.ts';
 import { todayISO } from '../logic/dates.ts';
 import { parseCents } from '../logic/money.ts';
 import type { Rule } from '../logic/types.ts';
@@ -69,6 +69,8 @@ function RulesTags() {
   const [m, setM] = useState(''); const [amt, setAmt] = useState(''); const [dir, setDir] = useState<'' | 'out' | 'in'>('');
   const [setCat, setSetCat] = useState(true); const [cat, setCat2] = useState('c-groceries'); const [ren, setRen] = useState(''); const [err, setErr] = useState<string | null>(null);
   const [tag, setTag] = useState(''); const [terr, setTerr] = useState<string | null>(null);
+  const [confirmApply, setConfirmApply] = useState(false);
+  const pendingChanges = useMemo(() => rulesChanges(s.rules, s.transactions).length, [s.rules, s.transactions]);
   const reset = () => { setEditId(null); setM(''); setAmt(''); setDir(''); setSetCat(true); setCat2('c-groceries'); setRen(''); setErr(null); };
   const edit = (r: Rule) => {
     setEditId(r.id); setM(r.merchantContains); setAmt(typeof r.amountCents === 'number' ? String(r.amountCents / 100).replace('.', ',') : ''); setDir(r.amountDirection ?? '');
@@ -98,6 +100,16 @@ function RulesTags() {
           {s.rules.length === 0 ? <EmptyState title="Sin reglas" text="Una regla cambia categoría o nombre cuando el comerciante contiene un texto, el importe es exacto, o ambas cosas." /> : s.rules.map((r) => (
             <div key={r.id} className="row"><span className="grow"><span className="title">Si {ruleText(r)}</span><span className="xs muted">{[r.renameTo ? `Renombrar a ${r.renameTo}` : '', r.setCategoryId ? `Categoría ${s.categories.find((c) => c.id === r.setCategoryId)?.name}` : ''].filter(Boolean).join(' · ')}</span></span><Button variant="ghost" onClick={() => edit(r)}>Editar</Button><IconButton label={`Borrar regla ${ruleText(r)}`} onClick={() => { if (editId === r.id) reset(); void removeRule(r.id); }}><LuTrash2 /></IconButton></div>
           ))}
+          {s.rules.length ? (
+            <div className="pad form">
+              {pendingChanges === 0 ? <p className="sm muted" style={{ margin: 0 }}>Tus movimientos ya cumplen todas las reglas.</p> : confirmApply ? (
+                <>
+                  <Banner tone="warn">Se cambiará la categoría o el nombre de {pendingChanges} {pendingChanges === 1 ? 'movimiento' : 'movimientos'}, también de los que categorizaste a mano. Las transacciones divididas conservan sus partes.</Banner>
+                  <div className="btnrow"><Button variant="secondary" onClick={() => setConfirmApply(false)}>Cancelar</Button><Button onClick={async () => { const n = await applyRulesToAll(); setConfirmApply(false); toast(`${n} ${n === 1 ? 'movimiento actualizado' : 'movimientos actualizados'}.`); }}>Aplicar ahora</Button></div>
+                </>
+              ) : <Button variant="secondary" onClick={() => setConfirmApply(true)}>Aplicar a mis movimientos ({pendingChanges})</Button>}
+            </div>
+          ) : null}
         </section>
         <section className="card pad form" aria-label={editId ? 'Editar regla' : 'Nueva regla'}>
           <h2>{editId ? 'Editar regla' : 'Nueva regla'}</h2>

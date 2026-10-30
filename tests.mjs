@@ -507,3 +507,34 @@ console.log('reglas con importe ok');
   assert.equal(parseAbsAmount(''), undefined); assert.equal(parseAbsAmount('12,5'), 1250); assert.equal(parseAbsAmount('-3'), 300); assert.equal(parseAbsAmount('abc'), null);
 }
 console.log('filtros de movimientos ok');
+
+{
+  const { rulesChanges } = await import('./src/logic/importer.ts');
+  const T = (id, merchant, amountCents, categoryId = 'c-none', splits = []) => ({ id, date: '2026-03-01', merchant, amountCents, notes: '', accountId: 'a1', categoryId, splits });
+  const rules = [{ id: 'r1', merchantContains: 'prestamos', setCategoryId: 'c-loan' }, { id: 'r2', merchantContains: '', amountCents: 6000, amountDirection: 'out', setCategoryId: 'c-fees', renameTo: 'Comisión' }];
+  const txs = [T('1', 'PRESTAMOS CUOTA', -12475), T('2', 'PRESTAMOS CUOTA', -12475, 'c-loan'), T('3', 'Otra cosa', -6000, 'c-groceries'), T('4', 'Otra cosa', 6000), T('5', 'PRESTAMOS X', -100, 'c-none', [{ categoryId: 'c-a', amountCents: -50 }, { categoryId: 'c-b', amountCents: -50 }])];
+  const ch = rulesChanges(rules, txs);
+  assert.deepEqual(ch.map((c) => c.id), ['1', '3'], 'solo los que cambian; la regla de importe respeta la dirección; las divididas no cambian de categoría');
+  assert.equal(ch[0].categoryId, 'c-loan'); assert.equal(ch[1].merchant, 'Comisión'); assert.equal(ch[1].categoryId, 'c-fees');
+  assert.equal(rulesChanges(rules, txs.map((t) => ({ ...t, ...(ch.find((c) => c.id === t.id) ?? {}) }))).length, 0, 'aplicar dos veces no cambia nada más');
+  assert.equal(rulesChanges([], txs).length, 0);
+
+  // recurrentes: traspasos
+  const { detectRecurring } = await import('./src/logic/recurring.ts');
+  const base = JSON.parse(JSON.stringify(buildSeed())); base.transactions = []; base.recurring = [];
+  const mk = (id, date, amt, merchant, acc, cat) => ({ id, date, amountCents: amt, merchant, notes: '', accountId: acc, categoryId: cat, splits: [] });
+  const months = ['2026-05-15', '2026-06-15', '2026-07-17', '2026-08-14', '2026-09-15', '2026-10-15'];
+  const withT = (mut) => ({ ...base, transactions: [...months.flatMap((d, i) => [mk('o' + i, d, -80000, 'Traspaso a ahorro', 'a-check', 'c-transfer'), mk('i' + i, d, 80000, 'Traspaso desde corriente', 'a-save', 'c-transfer')]), ...mut] });
+  let det = detectRecurring(withT([]));
+  assert.equal(det.length, 1, 'un solo traspaso recurrente (la entrada es el mismo movimiento)'); assert.equal(det[0].amountCents, -80000); assert.equal(det[0].accountId, 'a-check');
+  // importe distinto un mes → ya no es el mismo traspaso
+  const diff = withT([]); diff.transactions[4] = { ...diff.transactions[4], amountCents: -80100 };
+  assert.equal(detectRecurring(diff).length, 0, 'los traspasos exigen el mismo importe exacto');
+  // día muy distinto → no
+  const far = withT([]); far.transactions[6] = { ...far.transactions[6], date: '2026-07-24' };
+  assert.equal(detectRecurring(far).length, 0, 'más de 2 días de diferencia no vale');
+  // un pago de tarjeta de importe variable no sale
+  const card = { ...base, transactions: months.map((d, i) => mk('c' + i, d, -(30000 + i * 1500), 'Pago de tarjeta', 'a-check', 'c-transfer')) };
+  assert.equal(detectRecurring(card).length, 0, 'importes variables no son traspaso recurrente');
+}
+console.log('reglas a todo y traspasos recurrentes ok');
