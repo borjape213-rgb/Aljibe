@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler", "strict": true, "noEmit": true,
-    "skipLibCheck": true, "allowImportingTsExtensions": true, "lib": ["ES2023", "DOM", "DOM.Iterable"], "types": []
+    "skipLibCheck": true, "allowImportingTsExtensions": true, "lib": ["ES2023", "DOM", "DOM.Iterable"], "types": [], "jsx": "react-jsx"
   },
-  "include": ["src/logic/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }
